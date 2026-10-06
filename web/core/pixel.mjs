@@ -136,15 +136,22 @@ pal k #222034 | px x y c | line x1 y1 x2 y2 c | rect x y w h c | frect x y w h c
 fill x y c (flood) | replace c1 c2 | outline c [diag] | clear | canvas w h [ox oy] | crop x y w h | scale n
 flipx | flipy | rot (90 cw) | shift dx dy | mirror (left half -> right) | hue deg | sat f | light f | bright n
 quantize n | dither x y w h c1 c2 | paste file x y [sx sy w h] | frame fw fh i (select frame as canvas origin) | endframe
-copy sx sy w h dx dy | move sx sy w h dx dy | copyframe fw fh src dst [flipx] | remap c1,c2,.. d1,d2,.. | snap [c1,c2,..] (to locked palette)`;
+copy sx sy w h dx dy | move sx sy w h dx dy | copyframe fw fh src dst [flipx] | remap c1,c2,.. d1,d2,.. | snap [c1,c2,..] (to locked palette)
+fpoly x1 y1 x2 y2 ... c | mask x y w h | mask poly x1 y1 ... | mask opaque | unmask  (mask clips every later op; add "and" to intersect)
+textures (RAMP = c1,c2,.. dark->light or ramp:#hex): planks x y w h h|v size RAMP [seed] | shingles x y w h sw sh RAMP [seed]
+bricks x y w h bw bh mortar RAMP [seed] | gradient x y w h c1 c2 [v|h] (dithered; transparent side is skipped) | noise x y w h c amount [seed]
+colors may have alpha (#00000055) -> blended (shadows, glow)`;
 
 // apply ops script. loadImg(path) needed for 'paste'.
 export function applyOps(im, script, { loadImg, lockPal } = {}) {
   let img = cloneImg(im);
   const pal = { ...(im.palette || {}) };
   const C = (s) => (s && s.length === 1 && pal[s] ? pal[s] : hex(s));
-  let base = null, ox = 0, oy = 0; // frame mode
-  const P = (x, y, c) => set(img, x + ox, y + oy, c);
+  let base = null, ox = 0, oy = 0, clip = null; // frame mode, clip mask
+  const P = (x, y, c) => { const X = x + ox, Y = y + oy; if (clip && !clip[Y * img.width + X]) return; if (c[3] && c[3] < 255) { if (X < 0 || Y < 0 || X >= img.width || Y >= img.height) return; const i = (Y * img.width + X) * 4, a = c[3] / 255; for (let k = 0; k < 3; k++) img.data[i + k] = Math.round(img.data[i + k] * (1 - a) + c[k] * a); img.data[i + 3] = Math.max(img.data[i + 3], c[3]); return; } set(img, X, Y, c); };
+  const R = (spec) => (/^ramp:/.test(spec) ? ramp(spec.slice(5), 5) : spec.split(',')).map(C); // dark..light
+  const rng = (seed) => { let t = (seed | 0) + 0x6d2b79f5; return () => { t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  const inPoly = (pts, x, y) => { let c = false; for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) { const xi = pts[i], yi = pts[i + 1], xj = pts[j], yj = pts[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
   const lines = script.split(/[;\n]/).map(s => s.trim()).filter(s => s && !s.startsWith('//'));
   for (const line of lines) {
     const [op, ...a] = line.split(/\s+/), n = a.map(Number);
@@ -188,6 +195,60 @@ export function applyOps(im, script, { loadImg, lockPal } = {}) {
         for (let j = 0; j < fh; j++) for (let i = 0; i < fw; i++) set(img, bx + (flip ? fw - 1 - i : i), by + j, get(src, ax + i, ay + j)); break; }
       case 'remap': { const from = a[0].split(',').map(C), to = a[1].split(',').map(C); for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) { const c = get(img, x, y); const k = from.findIndex(f => same(f, c)); if (k >= 0 && to[k]) set(img, x, y, to[k]); } break; }
       case 'snap': { const cols = a.length ? a.join(' ').split(/[ ,]+/).map(C) : (lockPal || []); img = snapToPalette(img, cols).img; break; }
+      case 'fpoly': { const pts = n.slice(0, -1), c = C(a[a.length - 1]); const xs = pts.filter((_, i) => !(i % 2)), ys = pts.filter((_, i) => i % 2);
+        for (let y = Math.min(...ys); y <= Math.max(...ys); y++) for (let x = Math.min(...xs); x <= Math.max(...xs); x++) if (inPoly(pts, x + .5, y + .5)) P(x, y, c); break; }
+      case 'mask': { // mask rect x y w h | mask poly x1 y1 ... | mask opaque (current pixels)
+        const m = new Uint8Array(img.width * img.height);
+        if (a[0] === 'poly') { const pts = n.slice(1); for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) m[y * img.width + x] = inPoly(pts, x - ox + .5, y - oy + .5) ? 1 : 0; }
+        else if (a[0] === 'opaque') { for (let i = 0; i < m.length; i++) m[i] = img.data[i * 4 + 3] ? 1 : 0; }
+        else { const [x, y, w, h] = a[0] === 'rect' ? n.slice(1) : n; for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (i + ox >= 0 && j + oy >= 0 && i + ox < img.width && j + oy < img.height) m[(j + oy) * img.width + i + ox] = 1; }
+        clip = clip && a.includes('and') ? clip.map((v, i) => v & m[i]) : m; break; }
+      case 'unmask': clip = null; break;
+      case 'gradient': { // gradient x y w h c1 c2 [v|h] : dithered (4x4 Bayer) between two colors
+        const [x, y, w, h] = n, c1 = C(a[4]), c2 = C(a[5]), hor = a[6] === 'h', B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const t = hor ? i / Math.max(1, w - 1) : j / Math.max(1, h - 1), c = t * 16 > B[((y + j) & 3) * 4 + ((x + i) & 3)] + .5 ? c2 : c1; if (c[3]) P(x + i, y + j, c); } break; }
+      case 'noise': { // noise x y w h c amount seed : sparse speckles (only on opaque pixels)
+        const [x, y, w, h] = n, c = C(a[4]), amt = +a[5] || 0.08, r = rng(+a[6] || 1);
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const v = r(); if (v < amt && get(img, x + i + ox, y + j + oy)[3]) P(x + i, y + j, c); } break; }
+      case 'planks': { // planks x y w h h|v size ramp [seed] : clapboard/boards with tone jitter, edge light/shadow, grain, nails
+        const [x, y, w, h] = n, vert = a[4] === 'v', sz = +a[5] || 4, rp = R(a[6]), r = rng(+a[7] || 7), L = rp.length;
+        const len = vert ? h : w, across = vert ? w : h;
+        for (let b = 0; b * sz < across; b++) {
+          const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (r() - 0.5) * 1.6))), seam = Math.floor(r() * len * 0.8) + 6;
+          for (let k = 0; k < sz && b * sz + k < across; k++) for (let t = 0; t < len; t++) {
+            let c = rp[tone];
+            if (k === 0) c = rp[Math.min(L - 1, tone + 1)];
+            if (k === sz - 1) c = rp[Math.max(0, tone - 1)];
+            if (k > 0 && k < sz - 1 && r() < 0.06) c = rp[Math.max(0, tone - 1)]; // grain
+            if (t === seam % len && sz > 2) c = rp[0];
+            if ((t === (seam + 2) % len || t === (seam - 3 + len) % len) && k === 1 && sz > 3) c = rp[0]; // nails
+            const px = vert ? x + b * sz + k : x + t, py = vert ? y + t : y + b * sz + k;
+            P(px, py, c);
+          }
+        }
+        break; }
+      case 'shingles': { // shingles x y w h sw sh ramp [seed] : staggered shingles, light top-left, dark bottom
+        const [x, y, w, h, sw, sh] = n, rp = R(a[6]), r = rng(+a[7] || 3), L = rp.length;
+        for (let row = 0; row * sh < h; row++) {
+          const off = row % 2 ? Math.floor(sw / 2) : 0;
+          for (let col = -1; col * sw < w; col++) {
+            const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (r() - 0.5) * 1.4)));
+            for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) {
+              const px = x + col * sw + off + i, py = y + row * sh + j; if (px < x || px >= x + w || py >= y + h) continue;
+              let c = rp[tone];
+              if (j === sh - 1) c = rp[0]; else if (i === 0) c = rp[Math.max(0, tone - 1)]; else if (j === 0 || i === 1) c = rp[Math.min(L - 1, tone + 1)];
+              P(px, py, c);
+            }
+          }
+        }
+        break; }
+      case 'bricks': { // bricks x y w h bw bh mortar ramp [seed]
+        const [x, y, w, h, bw, bh] = n, mort = C(a[6]), rp = R(a[7]), r = rng(+a[8] || 5), L = rp.length;
+        for (let row = 0; row * bh < h; row++) { const off = row % 2 ? Math.floor(bw / 2) : 0;
+          for (let col = -1; col * bw < w; col++) { const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (r() - 0.5) * 2)));
+            for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) { const px = x + col * bw + off + i, py = y + row * bh + j; if (px < x || px >= x + w || py >= y + h) continue;
+              P(px, py, j === bh - 1 || i === bw - 1 ? mort : j === 0 || i === 0 ? rp[Math.min(L - 1, tone + 1)] : j === bh - 2 ? rp[Math.max(0, tone - 1)] : rp[tone]); } } }
+        break; }
       case 'frame': { const [fw, fh, i] = n, cols = Math.floor(img.width / fw); ox = (i % cols) * fw; oy = Math.floor(i / cols) * fh; base = [fw, fh]; break; }
       case 'endframe': ox = oy = 0; base = null; break;
       default: throw new Error(`unknown op "${op}"\n${OPS_HELP}`);

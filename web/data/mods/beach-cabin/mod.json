@@ -1,0 +1,25 @@
+{
+ "id": "beach-cabin",
+ "title": "Plaj Kabini",
+ "images": {
+  "mods/beach-cabin/beach_cabin_exterior": [
+   112,
+   112
+  ],
+  "mods/beach-cabin/beach_cabin_interior": [
+   128,
+   96
+  ]
+ },
+ "locations": {
+  "BeachCabin": "mods/beach-cabin/BeachCabin.json"
+ },
+ "patches": [
+  {
+   "target": "Beach",
+   "file": "mods/beach-cabin/BeachCabin_Exterior.json",
+   "x": 18,
+   "y": 6
+  }
+ ]
+}

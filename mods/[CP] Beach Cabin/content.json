@@ -1,0 +1,38 @@
+{
+  "Format": "2.0.0",
+  "Changes": [
+    {
+      "Action": "Load",
+      "Target": "Maps/BeachCabin",
+      "FromFile": "assets/BeachCabin.tmx"
+    },
+    {
+      "Action": "EditData",
+      "Target": "Data/Locations",
+      "Entries": {
+        "BeachCabin": {
+          "DisplayName": "Beach Cabin",
+          "DefaultArrivalTile": {
+            "X": 5,
+            "Y": 9
+          },
+          "CreateOnLoad": {
+            "MapPath": "Maps/BeachCabin"
+          }
+        }
+      }
+    },
+    {
+      "Action": "EditMap",
+      "Target": "Maps/Beach",
+      "FromFile": "assets/BeachCabin_Exterior.tmx",
+      "ToArea": {
+        "X": 18,
+        "Y": 6,
+        "Width": 7,
+        "Height": 7
+      },
+      "PatchMode": "ReplaceByLayer"
+    }
+  ]
+}

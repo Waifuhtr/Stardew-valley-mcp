@@ -78,6 +78,15 @@ NPC sheet: 64 px wide, 16×32 frames, rows = down, right, up, left (4 walk frame
 The web editor (🎨 tab) mirrors all of this for the human to check: layers, onion skin, select/move/copy, palette lock,
 ramp, Stardew row labels, live `check`, PXT import/export ("PXT → yeni katman" overlays an AI suggestion).
 
+## Mods in the simulator
+
+`web/data/mods/<id>/mod.json` lists new locations and EditMap patches; CLI, MCP and web load them on top of vanilla
+(`sdv maps` marks them `mod:<id>`; `SDV_VANILLA=1` disables them, e.g. for `fit` against the untouched map).
+Example: `examples/beach-cabin/build.mjs` draws a beach cabin with px ops only (exterior + interior tilesheet), builds
+the patch + interior location, and writes an installable Content Patcher mod to `mods/[CP] Beach Cabin/`.
+Pattern to copy for any new building: `fit` (vanilla) → draw with texture ops → patch (roof rows on Front, body on
+Buildings, door tile `Action Warp x y Location`) → interior map with exit `Warp` back → `check` → `go` to walk it.
+
 ## Data
 
 `web/data/index.json` → `{maps:{name:{w,h,out,warps:[[x,y,target,tx,ty,kind]]}}, textures:{key:[w,h]}}`

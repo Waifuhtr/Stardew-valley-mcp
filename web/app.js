@@ -10,7 +10,7 @@ const $ = (s) => document.querySelector(s);
 const status = (t) => ($('#status').textContent = t);
 const S = {
   index: null, map: null, season: 'spring', zoom: innerWidth < 600 ? 2 : 3, cam: { x: 0, y: 0 }, follow: true,
-  imgs: new Map(), customImgs: {}, customMaps: {}, overrides: {}, extraWarps: {},
+  imgs: new Map(), customImgs: {}, customMaps: {}, overrides: {}, extraWarps: {}, modPatches: {}, mods: [],
   below: null, above: null, overlay: null, animCells: [], sprite: null, speed: 5,
   P: { x: 0, y: 0, px: 0, py: 0, dir: 'down', moving: false, from: null, to: null, t: 0, path: [], walkT: 0 },
   plan: null, held: null,
@@ -40,8 +40,10 @@ async function getMap(name) {
   if (S.overrides[name]) return S.overrides[name];
   const j = S.customMaps[name] || await (await fetch(`data/maps/${name}.json`)).json();
   const m = new GameMap(j);
-  for (const w of S.extraWarps[name] || []) m.warps.push(w);
-  return m;
+  let out = m;
+  for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y);
+  for (const w of S.extraWarps[name] || []) out.warps.push(w);
+  return out;
 }
 const known = (name) => !!S.index.maps[mapOf(name, S.index.maps)];
 
@@ -247,7 +249,7 @@ function loop(t) {
 
 // ---------- input ----------
 const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
-addEventListener('keydown', e => { if (e.target.matches('input,textarea,select') || !$('#tab-map').classList.contains('on')) return; if (KEYS[e.code]) { S.held = KEYS[e.code]; S.follow = true; $('#optFollow').checked = true; e.preventDefault(); } if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') interact(); });
+addEventListener('keydown', e => { if (e.target.matches?.('input,textarea,select') || !$('#tab-map').classList.contains('on')) return; if (KEYS[e.code]) { S.held = KEYS[e.code]; S.follow = true; $('#optFollow').checked = true; e.preventDefault(); } if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') interact(); });
 addEventListener('keyup', e => { if (KEYS[e.code] === S.held) S.held = null; });
 document.querySelectorAll('#dpad button').forEach(b => {
   const d = b.dataset.d;
@@ -319,7 +321,7 @@ $('#btnCopy').onclick = () => navigator.clipboard?.writeText($('#infoText').text
 // ---------- UI wiring ----------
 function fillList() {
   const dl = $('#mapList'), v = $('#optVariants').checked;
-  dl.innerHTML = Object.keys(S.index.maps).filter(n => v || !isVariant(n, S.index.maps)).sort().map(n => `<option value="${n}">`).join('');
+  dl.innerHTML = Object.keys(S.index.maps).filter(n => v || !isVariant(n, S.index.maps)).sort().map(n => `<option value="${n}"${S.index.maps[n].mod ? ' label="' + n + ' (mod)"' : ''}>`).join('');
 }
 $('#optVariants').onchange = fillList;
 $('#mapInput').onchange = (e) => { if (known(e.target.value)) loadMap(e.target.value); };
@@ -415,10 +417,29 @@ async function loadHelp() {
   $('#helpBody').innerHTML = await (await fetch('help.html')).text();
 }
 
+// ---------- mods (web/data/mods: new locations + EditMap patches, same as the CLI) ----------
+async function loadMods() {
+  let ids = [];
+  try { ids = await (await fetch('data/mods/index.json')).json(); } catch { return; }
+  for (const id of ids) {
+    const m = await (await fetch(`data/mods/${id}/mod.json`)).json();
+    S.mods.push(m);
+    Object.assign(S.index.textures, m.images || {});
+    for (const [n, f] of Object.entries(m.locations || {})) {
+      const j = await (await fetch('data/' + f)).json();
+      S.customMaps[n] = j; S.index.maps[n] = { w: j.w, h: j.h, out: 0, warps: mapWarps(j), mod: id };
+    }
+    for (const p of m.patches || []) (S.modPatches[p.target] ||= []).push({ ...p, json: await (await fetch('data/' + p.file)).json() });
+  }
+  for (const t of Object.keys(S.modPatches)) { const mm = await getMap(t); S.index.maps[t].warps = mm.warps; }
+  if (S.mods.length) status('modlar: ' + S.mods.map(m => m.title).join(', '));
+}
+
 // ---------- boot ----------
 (async () => {
   resize();
   S.index = await (await fetch('data/index.json')).json();
+  await loadMods();
   fillList();
   S.sprite = await loadImage('extra/sprites');
   window.addEventListener('sprite', (e) => { S.sprite = e.detail; status('sprite haritada'); });

@@ -8,7 +8,7 @@ import { readPNG, writePNG, encodePNG } from '../lib/png.mjs';
 import { GameMap, findPath, pathToMoves, pathToWarp } from '../web/core/map.mjs';
 import { applyPatch, newProblems } from '../web/core/patch.mjs';
 import { asciiMap, LEGEND } from '../web/core/ascii.mjs';
-import { route, incoming, mapOf, isVariant } from '../web/core/world.mjs';
+import { route, incoming, mapOf, isVariant, mapWarps } from '../web/core/world.mjs';
 import { renderMap, SEASONS } from '../web/core/render.mjs';
 import { tmxToJson, mapToTmx } from '../web/core/tmx.mjs';
 import { checkMap, checkFootprint, nearestWalkable, connectivityDiff } from '../web/core/check.mjs';
@@ -18,8 +18,27 @@ import { newImg, blit, text as drawText, fillRect } from '../web/core/raster.mjs
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA = process.env.SDV_DATA || path.join(ROOT, 'web/data');
 let INDEX = null;
-const index = () => (INDEX ||= JSON.parse(fs.readFileSync(path.join(DATA, 'index.json'), 'utf8')));
 const mapCache = new Map(), imgCache = new Map();
+// mods in web/data/mods (new locations + EditMap patches) are applied on top of vanilla; SDV_VANILLA=1 disables
+const MODS = { locs: {}, patches: {} };
+function index() {
+  if (INDEX) return INDEX;
+  INDEX = JSON.parse(fs.readFileSync(path.join(DATA, 'index.json'), 'utf8'));
+  const list = path.join(DATA, 'mods/index.json');
+  if (!process.env.SDV_VANILLA && fs.existsSync(list)) {
+    for (const id of JSON.parse(fs.readFileSync(list, 'utf8'))) {
+      const m = JSON.parse(fs.readFileSync(path.join(DATA, 'mods', id, 'mod.json'), 'utf8'));
+      Object.assign(INDEX.textures, m.images || {});
+      for (const [n, f] of Object.entries(m.locations || {})) {
+        const j = JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
+        MODS.locs[n] = j; INDEX.maps[n] = { w: j.w, h: j.h, out: j.props.Outdoors ? 1 : 0, warps: mapWarps(j), mod: id };
+      }
+      for (const p of m.patches || []) (MODS.patches[p.target] ||= []).push({ ...p, mod: id });
+    }
+    for (const t of Object.keys(MODS.patches)) { const mm = loadMap(t); INDEX.maps[t].warps = mm.warps; INDEX.maps[t].mod = MODS.patches[t].map(p => p.mod).join(','); }
+  }
+  return INDEX;
+}
 
 export function loadMap(name) {
   if (!name) throw new Error('map name required (try: sdv maps)');
@@ -30,7 +49,11 @@ export function loadMap(name) {
     if (!hit) throw new Error(`unknown map "${name}". Close: ${Object.keys(index().maps).filter(k => k.toLowerCase().includes(low.slice(0, 4))).slice(0, 8).join(' ')}`);
     return loadMap(hit);
   }
-  if (!mapCache.has(n)) mapCache.set(n, new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, 'maps', n + '.json'), 'utf8'))));
+  if (!mapCache.has(n)) {
+    let m = new GameMap(MODS.locs[n] || JSON.parse(fs.readFileSync(path.join(DATA, 'maps', n + '.json'), 'utf8')));
+    for (const p of MODS.patches[n] || []) m = applyPatch(m, new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, p.file), 'utf8'))), p.x, p.y);
+    mapCache.set(n, m);
+  }
   return mapCache.get(n);
 }
 const inflate = async (b, kind) => new Uint8Array(kind === 'gzip' ? zlib.gunzipSync(b) : zlib.inflateSync(b));
@@ -102,7 +125,7 @@ export async function sdv(argv) {
     case undefined: case 'help': return { text: SDV_HELP };
     case 'maps': {
       const f = (p[0] || '').toLowerCase();
-      return { text: Object.entries(ix.maps).filter(([k]) => k.toLowerCase().includes(f)).map(([k, v]) => `${k} ${v.w}x${v.h}${v.out ? ' o' : ''}`).join('\n') };
+      return { text: Object.entries(ix.maps).filter(([k]) => k.toLowerCase().includes(f)).map(([k, v]) => `${k} ${v.w}x${v.h}${v.out ? ' o' : ''}${v.mod ? ' mod:' + v.mod : ''}`).join('\n') };
     }
     case 'info': {
       const m = await loadAnyMap(p[0]);

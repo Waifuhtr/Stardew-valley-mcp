@@ -179,7 +179,7 @@ export function initPixel({ status, sampleUrl }) {
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
   cv.addEventListener('wheel', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, px = (mx - E.ox) / E.zoom, py = (my - E.oy) / E.zoom; E.zoom = Math.max(1, Math.min(64, E.zoom * (e.deltaY < 0 ? 1.2 : 0.83))); E.ox = mx - px * E.zoom; E.oy = my - py * E.zoom; }, { passive: false });
   addEventListener('keydown', (e) => {
-    if (!$('#tab-px').classList.contains('on') || e.target.matches('input,textarea,select')) return;
+    if (!$('#tab-px').classList.contains('on') || e.target.matches?.('input,textarea,select')) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); (e.shiftKey ? $('#pxRedo') : $('#pxUndo')).onclick(); }
     else if ((e.ctrlKey || e.metaKey) && k === 'c') $('#pxCopy').onclick();

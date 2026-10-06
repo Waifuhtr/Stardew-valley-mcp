@@ -1,0 +1,11 @@
+{
+  "Name": "Beach Cabin",
+  "Author": "Waifuhtr",
+  "Version": "1.0.0",
+  "Description": "A small enterable cabin on the beach (made with Stardew Sim).",
+  "UniqueID": "Waifuhtr.BeachCabin",
+  "UpdateKeys": [],
+  "ContentPackFor": {
+    "UniqueID": "Pathoschild.ContentPatcher"
+  }
+}

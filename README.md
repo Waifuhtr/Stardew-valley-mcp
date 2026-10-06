@@ -16,6 +16,7 @@ The goal: AI assistants making Stardew mods stop guessing coordinates and stop n
 | `cli/px.mjs` | Pixel CLI: `draw read ops palette preview spec check slice pack` (PXT text sprites) |
 | `mcp/server.mjs` | Zero-dependency MCP server: tools `sdv` and `px` (one `args` string each → tiny schema) |
 | `tools/extract.mjs` | XNB (Android LZ4 / uncompressed) or unpacked TMX+PNG → `web/data` |
+| `examples/beach-cabin/` | Example: enterable beach cabin drawn with `px` ops → installable CP mod in `mods/` and shown on the web map |
 | `AGENTS.md` | Token-efficient workflow guide for AI agents |
 
 ## Quick start
