@@ -73,7 +73,7 @@ export function loadMap(name) {
   if (!mapCache.has(n)) {
     let m = new GameMap(MODS.locs[n] || JSON.parse(fs.readFileSync(path.join(DATA, 'maps', n + '.json'), 'utf8')));
     m = applyStates(m, MODS.states);
-    for (const p of MODS.patches[n] || []) m = applyPatch(m, new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, p.file), 'utf8'))), p.x, p.y);
+    for (const p of MODS.patches[n] || []) m = applyPatch(m, new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, p.file), 'utf8'))), p.x, p.y, p.mode || 'ReplaceByLayer');
     if (MODS.decor[n]) m = decorMap(m, MODS.decor[n]);
     setFurn(m, MODS.furniture[n] || []);
     mapCache.set(n, m);
@@ -172,7 +172,7 @@ sheet <img> [--idx i] [-o f.png --grid]   tilesheet info / index grid image
 tmx <map> -o f.tmx                 export vanilla map to Tiled TMX (mod template)
 check <file.tmx|map> [--locs A,B]  validate a custom map (layers, sheets, warps, connectivity)
 fit <map> x y w h [--door x,y]     can a w*h structure go here? (blocking, cut paths, door reachability)
-patch <map> <patch.tmx> x y [--mode Replace] [-o f.png]   EditMap preview: apply, check, render area
+patch <map> <patch.tmx> x y [--mode Overlay|ReplaceByLayer|Replace] [-o f.png]   EditMap preview (CP semantics; default ReplaceByLayer erases under empty cells)
 furni find <text> [--type chair] | furni info <id|name> | furni show <id|name> [-o f.png] | furni list <map> | furni skins <id> | furni mods   game + imported mod furniture (TR/EN)
 place <map> <id|name> x y [--rot 0-3] [--skin mod:n] [--save] [--mod id]   check placement (floor/wall/overlap/doors/paths); --save keeps it
 unplace <map> x y [--mod id]       remove saved furniture covering x,y
@@ -343,7 +343,10 @@ export async function sdv(argv) {
     case 'patch': {
       const base = loadMap(p[0]), pm = await loadAnyMap(p[1]), x = +p[2], y = +p[3];
       const before = checkFootprint(base, x, y, pm.w, pm.h);
-      const m = applyPatch(base, pm, x, y, fl.mode || 'ReplaceByLayer');
+      const mode = fl.mode || 'ReplaceByLayer', m = applyPatch(base, pm, x, y, mode);
+      const wiped = {}; // tiles CP will erase: ReplaceByLayer copies empty patch cells too
+      if (mode !== 'Overlay') for (const id of pm.layerOrder) for (let py = 0; py < pm.h; py++) for (let px = 0; px < pm.w; px++)
+        if (!pm.gid(id, px, py) && base.gid(id, x + px, y + py)) wiped[id] = (wiped[id] || 0) + 1;
       const lm = (n) => { try { return loadMap(n); } catch { return null; } };
       const r = newProblems(checkMap(base, { index: ix, loadMap: lm }), checkMap(m, { index: ix, loadMap: lm }));
       const cd = connectivityDiff(base, m);
@@ -353,7 +356,8 @@ export async function sdv(argv) {
       const pad = 4, region = [Math.max(0, x - pad), Math.max(0, y - pad), Math.min(m.w - Math.max(0, x - pad), pm.w + pad * 2), Math.min(m.h - Math.max(0, y - pad), pm.h + pad * 2)];
       const img = renderMap(m, { getImg, textures: ix.textures, season: fl.season || 'spring', region, scale: +fl.scale || 1, overlay: fl.pass ? 'pass' : null });
       const png = encodePNG(img); fs.writeFileSync(o, png);
-      return { text: [`patched ${base.name} with ${pm.name} ${pm.w}x${pm.h} at ${x},${y}`,
+      return { text: [`patched ${base.name} with ${pm.name} ${pm.w}x${pm.h} at ${x},${y} (PatchMode ${mode})`,
+        ...Object.entries(wiped).map(([id, n]) => `W ${mode} erases ${n} existing ${id} tiles (empty patch cells) — use --mode Overlay / PatchMode "Overlay" unless that's intended`),
         before.warpsIn.length ? `W covers vanilla warps: ${before.warpsIn.map(fmtW).join('; ')}` : '',
         before.actions.length ? `W covers vanilla actions: ${before.actions.map(a => `${a[0]},${a[1]} ${a[3]}`).join('; ')}` : '',
         ...r.errors.map(e => 'E ' + e), ...r.warnings.map(e => 'W ' + e),
@@ -500,7 +504,7 @@ export async function sdv(argv) {
       const rf = path.join(DATA, `mods/${id}/${to}.json`);
       if (fs.existsSync(rf)) { const rj = JSON.parse(fs.readFileSync(rf, 'utf8')); const wp = rj.props.Warp.split(' '); rj.props.Warp = `${wp[0]} ${wp[1]} ${target.name} ${X + dx} ${Y + dy + 1}`; fs.writeFileSync(rf, JSON.stringify(rj)); }
       const fit = checkFootprint(target, X, Y + roof, w, h - roof, { door: [X + dx, Y + dy + 1] });
-      editMod(id, mm => { mm.patches = (mm.patches || []).filter(q => q.file !== file); mm.patches.push({ target: target.name, file, x: X, y: Y }); });
+      editMod(id, mm => { mm.patches = (mm.patches || []).filter(q => q.file !== file); mm.patches.push({ target: target.name, file, x: X, y: Y, mode: 'Overlay' }); });
       return { text: [`building ${to} entrance on ${target.name} at ${X},${Y} (${w}x${h}, roof rows ${roof}), door ${X + dx},${Y + dy} -> ${to} ${arr.join(',')}`,
         `footprint: ${Object.entries(fit.counts).filter(([, v]) => v).map(([k, v]) => k + '=' + v).join(' ')}${fit.warpsIn.length ? ' COVERS WARPS' : ''}${fit.cutTiles ? ` cuts ${fit.cutTiles} tiles` : ''}`,
         asciiMap(loadMap(target.name), { x: Math.max(0, X - 3), y: Math.max(0, Y + roof - 2), w: w + 6, h: h - roof + 5 })].join('\n') };
@@ -529,11 +533,11 @@ export async function sdv(argv) {
       for (const pt of m.patches || []) {
         const pm = new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, pt.file), 'utf8'))), f = path.basename(pt.file, '.json') + '.tmx';
         writeTmx(pm, f);
-        changes.push({ Action: 'EditMap', Target: `Maps/${pt.target}`, FromFile: `assets/${f}`, ToArea: { X: pt.x, Y: pt.y, Width: pm.w, Height: pm.h }, PatchMode: 'ReplaceByLayer' });
+        changes.push({ Action: 'EditMap', Target: `Maps/${pt.target}`, FromFile: `assets/${f}`, ToArea: { X: pt.x, Y: pt.y, Width: pm.w, Height: pm.h }, PatchMode: pt.mode || 'ReplaceByLayer' });
       }
       for (const img of images) { const src = path.join(DATA, 'img', img + '.png'); if (fs.existsSync(src)) fs.copyFileSync(src, path.join(A, img.split('/').pop() + '.png')); }
       if ((m.states || []).length) notes.push(`needs in-game progress: ${m.states.join(', ')} (e.g. repair the beach bridge)`);
-      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.1', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid,
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.2', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid,
         ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' }, Dependencies: [...deps.map(u => ({ UniqueID: u, IsRequired: false })), { UniqueID: 'Waifuhtr.StardewSim', IsRequired: false }] }, null, 2));
       fs.writeFileSync(path.join(dir, 'content.json'), JSON.stringify({ Format: '2.0.0', DynamicTokens: [{ Name: 'UseBridge', Value: 'false' }, useBridge], Changes: changes }, null, 2));
       const ss = await sdv(['ss-export', id, '-o', fl.o || 'dist', '--name', `[SS] ${title}`]);
@@ -553,7 +557,7 @@ export async function sdv(argv) {
       const name = fl.name || `[SS] ${m.title || id}`, dir = path.join(fl.o || 'dist', name);
       fs.mkdirSync(dir, { recursive: true });
       const needs = [...new Set(names.size ? [...names].flatMap(n => (m.furniture?.[n] || []).map(pl => fd.items[pl.id]?.mod).filter(Boolean)) : [])];
-      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: name, Author: 'Stardew Sim', Version: '1.0.1', Description: `Real furniture layout for ${[...names].join(', ')}`, UniqueID: `StardewSim.${id.replace(/[^\w.]/g, '')}`,
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: name, Author: 'Stardew Sim', Version: '1.0.2', Description: `Real furniture layout for ${[...names].join(', ')}`, UniqueID: `StardewSim.${id.replace(/[^\w.]/g, '')}`,
         ContentPackFor: { UniqueID: 'Waifuhtr.StardewSim' }, Dependencies: needs.map(u => ({ UniqueID: u, IsRequired: false })) }, null, 2));
       fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify({ RequiresMods: needs, Locations: locs, Actions: actions }, null, 1));
       return { text: `wrote ${dir}: ${[...names].map(n => `${n} ${locs[n].Furniture.length} furniture`).join(', ')}${Object.keys(actions).length ? `, ${Object.keys(actions).length} actions` : ''}${needs.length ? `\nrequires: ${needs.join(', ')}` : ''}` };

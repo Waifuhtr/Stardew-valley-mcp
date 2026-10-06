@@ -4,7 +4,10 @@ import { GameMap } from './map.mjs';
 // diff two check results -> only problems introduced by the patch
 export const newProblems = (before, after) => ({ errors: after.errors.filter(e => !before.errors.includes(e)), warnings: after.warnings.filter(e => !before.warnings.includes(e)), info: [] });
 
-// mode: 'ReplaceByLayer' (default: non-empty patch tiles replace), 'Replace' (whole area per patch layer), 'Overlay' (same as ReplaceByLayer here)
+// Content Patcher EditMap PatchMode semantics:
+//  'Overlay'        only non-empty patch tiles replace target tiles
+//  'ReplaceByLayer' (CP default) every tile of the area is replaced on layers the patch has — empty patch tiles CLEAR the target
+//  'Replace'        like ReplaceByLayer, and layers missing from the patch are cleared in the area too
 export function applyPatch(target, patch, x, y, mode = 'ReplaceByLayer') {
   const j = { name: target.name, w: target.w, h: target.h, props: { ...target.props }, sheets: target.sheets.map(s => ({ ...s })), anim: structuredClone(target.anim), tp: structuredClone(target.tp) };
   // merge tilesheets by image (CP adds missing ones with a z_ prefix)
@@ -24,12 +27,15 @@ export function applyPatch(target, patch, x, y, mode = 'ReplaceByLayer') {
     for (let py = 0; py < patch.h; py++) for (let px = 0; px < patch.w; px++) {
       const tx = x + px, ty = y + py; if (tx < 0 || ty < 0 || tx >= target.w || ty >= target.h) continue;
       const g = src[py * patch.w + px], k = `${tx},${ty}`;
-      if (!g && mode !== 'Replace') continue;
+      if (!g && mode === 'Overlay') continue;
       dst[ty * target.w + tx] = conv(g);
       if (j.anim[id]) delete j.anim[id][k];
       if (j.tp[id]) delete j.tp[id][k];
       const a = patch.anim[id]?.[`${px},${py}`]; if (a) (j.anim[id] ||= {})[k] = [a[0], a[1].map(conv)];
     }
+  }
+  if (mode === 'Replace') for (const id of order) if (!patch.layers[id]) for (let py = 0; py < patch.h; py++) for (let px = 0; px < patch.w; px++) {
+    const tx = x + px, ty = y + py; if (tx < 0 || ty < 0 || tx >= target.w || ty >= target.h) continue; layers[id][ty * target.w + tx] = 0;
   }
   for (const [id, t] of Object.entries(patch.tp)) for (const [xy, p] of Object.entries(t)) {
     const [px, py] = xy.split(',').map(Number); (j.tp[id] ||= {})[`${px + x},${py + y}`] = p;

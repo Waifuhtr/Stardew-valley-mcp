@@ -37,6 +37,8 @@ Coordinates are always **tiles** (1 tile = 16 px), origin top-left. Warps use lo
   tilesheet names kept so the game resolves them).
 - Validate: `sdv check MyPlace.tmx [--locs MyPlace,Other]` → missing layers, non-vanilla tilesheets, warp targets
   outside/blocked, incoming warps landing on walls, disconnected warp areas.
+- CP `EditMap` default `PatchMode: ReplaceByLayer` ERASES target tiles under empty patch cells (black void behind a
+  building). Use `Overlay` for buildings/props on existing ground; `sdv patch` warns about this.
 - Preview a Content Patcher `EditMap` (`FromFile` + `ToArea`): `sdv patch Town Patch.tmx x y [--pass]`.
 - `sdv sheet spring_town --idx 993` → tile index ↔ column/row; `sdv sheet spring_town -o grid.png --grid` → numbered sheet.
 

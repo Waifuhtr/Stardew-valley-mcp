@@ -56,7 +56,7 @@
         "Width": 7,
         "Height": 7
       },
-      "PatchMode": "ReplaceByLayer"
+      "PatchMode": "Overlay"
     }
   ]
 }

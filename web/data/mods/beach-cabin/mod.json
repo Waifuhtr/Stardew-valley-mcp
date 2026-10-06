@@ -113,7 +113,8 @@
    "target": "Beach",
    "file": "mods/beach-cabin/BeachCabin_Exterior.json",
    "x": 18,
-   "y": 6
+   "y": 6,
+   "mode": "Overlay"
   }
  ]
 }

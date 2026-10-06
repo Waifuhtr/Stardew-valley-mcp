@@ -42,7 +42,7 @@ async function getMap(name) {
   const j = S.customMaps[name] || await (await fetch(`data/maps/${name}.json`)).json();
   const m = new GameMap(j);
   let out = applyStates(m, S.states || []);
-  for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y);
+  for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y, p.mode || 'ReplaceByLayer');
   const dec = { ...(S.modDecor[name] || {}), ...(S.userDecor[name] || {}) };
   if (S.furn && (dec.wallpaper != null || dec.floor != null)) out = applyDecor(out, { wallpaper: dec.wallpaper != null ? resolveDecor(dec.wallpaper, 'wallpaper', S.furn.wallpaper) : null, floor: dec.floor != null ? resolveDecor(dec.floor, 'floor', S.furn.flooring) : null }, S.index.textures);
   for (const w of S.extraWarps[name] || []) out.warps.push(w);

@@ -12,7 +12,8 @@
    "target": "Beach",
    "file": "mods/beach-cafe/BeachBakery_Exterior.json",
    "x": 66,
-   "y": 3
+   "y": 3,
+   "mode": "Overlay"
   }
  ],
  "decor": {

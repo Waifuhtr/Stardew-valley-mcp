@@ -228,13 +228,13 @@ fs.writeFileSync(path.join(WEB, 'mod.json'), JSON.stringify({
   id: 'beach-cabin', title: 'Plaj Kabini', furniture: prev.furniture, decor: prev.decor,
   images: { 'mods/beach-cabin/beach_cabin_exterior': [112, 112], 'mods/beach-cabin/beach_cabin_interior': [128, 96] },
   locations: { [INSIDE.name]: 'mods/beach-cabin/BeachCabin.json' },
-  patches: [{ target: PLACE.map, file: 'mods/beach-cabin/BeachCabin_Exterior.json', x: PLACE.x, y: PLACE.y }],
+  patches: [{ target: PLACE.map, file: 'mods/beach-cabin/BeachCabin_Exterior.json', x: PLACE.x, y: PLACE.y, mode: 'Overlay' }],
 }, null, 1));
 const list = path.join(ROOT, 'web/data/mods/index.json');
 const ids = fs.existsSync(list) ? JSON.parse(fs.readFileSync(list, 'utf8')) : [];
 if (!ids.includes('beach-cabin')) fs.writeFileSync(list, JSON.stringify([...ids, 'beach-cabin']));
 fs.writeFileSync(path.join(MOD, 'manifest.json'), JSON.stringify({
-  Name: 'Beach Cabin', Author: 'Waifuhtr', Version: '1.0.0', Description: 'A small enterable cabin on the beach (made with Stardew Sim).',
+  Name: 'Beach Cabin', Author: 'Waifuhtr', Version: '1.0.2', Description: 'A small enterable cabin on the beach (made with Stardew Sim).',
   UniqueID: 'Waifuhtr.BeachCabin', UpdateKeys: [], ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' },
 }, null, 2));
 // bake real furniture + wallpaper/floor (from mod.json) into the CP interior; seats via Data/ChairTiles
@@ -252,7 +252,7 @@ fs.writeFileSync(path.join(MOD, 'content.json'), JSON.stringify({
     { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin_Bare.tmx', When: { HasMod: 'Waifuhtr.StardewSim' } },
     { Action: 'EditData', Target: 'Data/Locations', Entries: { [INSIDE.name]: { DisplayName: 'Beach Cabin', DefaultArrivalTile: { X: INSIDE.arrive[0], Y: INSIDE.arrive[1] }, CreateOnLoad: { MapPath: `Maps/${INSIDE.name}` } } } },
     { Action: 'EditData', Target: 'Data/ChairTiles', Entries: baked.chairTiles, When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
-    { Action: 'EditMap', Target: 'Maps/Beach', FromFile: 'assets/BeachCabin_Exterior.tmx', ToArea: { X: PLACE.x, Y: PLACE.y, Width: PLACE.w, Height: PLACE.h }, PatchMode: 'ReplaceByLayer' },
+    { Action: 'EditMap', Target: 'Maps/Beach', FromFile: 'assets/BeachCabin_Exterior.tmx', ToArea: { X: PLACE.x, Y: PLACE.y, Width: PLACE.w, Height: PLACE.h }, PatchMode: 'Overlay' },
   ],
 }, null, 2));
 console.log('built beach cabin');
