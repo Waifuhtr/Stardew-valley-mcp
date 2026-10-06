@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#2b1d14">
+<title>Stardew Sim — harita simülatörü & piksel aracı</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <nav>
+    <button data-tab="map" class="on">🗺️ Harita</button>
+    <button data-tab="px">🎨 Piksel</button>
+    <button data-tab="help">🤖 AI</button>
+  </nav>
+  <span id="status"></span>
+</header>
+
+<main>
+<section id="tab-map" class="tab on">
+  <div class="bar">
+    <input id="mapInput" list="mapList" placeholder="Harita ara (Town, SeedShop...)" autocomplete="off">
+    <datalist id="mapList"></datalist>
+    <select id="season"><option>spring</option><option>summer</option><option>fall</option><option>winter</option></select>
+    <button id="btnMenu" title="Seçenekler">☰</button>
+  </div>
+  <div id="menu" class="drop" hidden>
+    <label><input type="checkbox" id="optPass"> Çarpışma katmanı</label>
+    <label><input type="checkbox" id="optWarps" checked> Warp/kapılar</label>
+    <label><input type="checkbox" id="optGrid"> Izgara + koordinat</label>
+    <label><input type="checkbox" id="optFront" checked> Front katmanları</label>
+    <label><input type="checkbox" id="optFollow" checked> Kamera karakteri takip etsin</label>
+    <label><input type="checkbox" id="optVariants"> Festival/varyant haritaları listele</label>
+    <hr>
+    <div class="row"><b>Simülasyon:</b> hedefe yürü</div>
+    <div class="row"><input id="goMap" list="mapList" placeholder="Hedef harita"><input id="goX" type="number" placeholder="x"><input id="goY" type="number" placeholder="y"><button id="btnGo">Yürü</button></div>
+    <div class="row"><button id="btnRun">🏃 Hız x2</button><button id="btnStop">Dur</button></div>
+    <hr>
+    <div class="row"><b>Mod testi:</b> TMX (+ özel tilesheet PNG'leri)</div>
+    <div class="row"><input type="file" id="tmxFile" accept=".tmx,.png" multiple></div>
+    <div class="row"><label><input type="radio" name="tmxMode" value="loc" checked> Yeni konum</label><label><input type="radio" name="tmxMode" value="patch"> Haritaya yama (EditMap)</label></div>
+    <div class="row" id="patchRow"><input id="patchMap" list="mapList" placeholder="Hedef harita"><input id="patchX" type="number" placeholder="x"><input id="patchY" type="number" placeholder="y"></div>
+    <div class="row"><b>Giriş warpı:</b><input id="entMap" list="mapList" placeholder="Harita"><input id="entX" type="number" placeholder="x"><input id="entY" type="number" placeholder="y"> → <input id="entTX" type="number" placeholder="tx"><input id="entTY" type="number" placeholder="ty"><button id="btnEnt">Ekle</button></div>
+    <div class="row"><button id="btnTmxExport">Bu haritayı TMX indir</button><button id="btnShot">PNG indir</button></div>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas>
+    <div id="dpad">
+      <button data-d="up">▲</button><button data-d="left">◀</button><button data-d="act">●</button><button data-d="right">▶</button><button data-d="down">▼</button>
+    </div>
+    <button id="btnCenter" title="Karaktere odaklan">◎</button>
+    <div id="zoom"><button data-z="1">+</button><button data-z="-1">−</button></div>
+  </div>
+  <div id="info"><span id="infoText">Dokun: karo bilgisi + oraya yürü. Sürükle: kaydır. İki parmak: yakınlaştır.</span><button id="btnCopy" title="Kopyala">📋</button></div>
+</section>
+
+<section id="tab-px" class="tab">
+  <div class="bar wrap">
+    <select id="pxPreset">
+      <option value="">Yeni…</option>
+      <option value="16x16">16×16 obje</option>
+      <option value="16x32">16×32 craftable</option>
+      <option value="64x128">64×128 NPC sayfası</option>
+      <option value="128x192">128×192 portre (6)</option>
+      <option value="32x32">32×32</option>
+      <option value="48x48">48×48</option>
+    </select>
+    <input id="pxW" type="number" value="16" min="1" max="512"><span>×</span><input id="pxH" type="number" value="32" min="1" max="512">
+    <button id="pxResize">Boyut</button>
+    <label class="btn">PNG aç<input type="file" id="pxOpen" accept="image/png" hidden></label>
+    <button id="pxSample">Örnek NPC</button>
+    <button id="pxSave">PNG indir</button>
+    <button id="pxUse">Haritada dene</button>
+  </div>
+  <div class="bar wrap tools">
+    <button data-t="pen" class="on" title="Kalem">✏️</button>
+    <button data-t="erase" title="Silgi">🧽</button>
+    <button data-t="fill" title="Boya kovası">🪣</button>
+    <button data-t="pick" title="Renk seç">💧</button>
+    <button data-t="line" title="Çizgi">／</button>
+    <button data-t="rect" title="Dikdörtgen">▭</button>
+    <button data-t="pan" title="Kaydır">✋</button>
+    <button id="pxMirror" title="Yatay ayna">⇋</button>
+    <button id="pxUndo">↶</button><button id="pxRedo">↷</button>
+    <input type="color" id="pxColor" value="#3b2a4a">
+    <span id="pxPal"></span>
+  </div>
+  <div class="bar wrap">
+    <label>Kare <input id="pxFW" type="number" value="16" min="1">×<input id="pxFH" type="number" value="32" min="1"></label>
+    <label><input type="checkbox" id="pxGrid" checked> ızgara</label>
+    <label>Anim <input id="pxFrames" value="0,1,2,3" size="8"></label>
+    <label>fps <input id="pxFps" type="number" value="6" min="1" max="30"></label>
+    <canvas id="pxAnim" width="64" height="64"></canvas>
+  </div>
+  <div id="pxStage"><canvas id="pxCv"></canvas></div>
+  <details id="pxTextBox"><summary>PXT metin (AI formatı) — içe/dışa aktar</summary>
+    <textarea id="pxText" spellcheck="false" placeholder="pxt 16x16&#10;. transparent&#10;k #222034&#10;--&#10;....kkkk...."></textarea>
+    <div class="row"><button id="pxToText">Seçili kare → PXT</button><button id="pxAllText">Tümü → PXT</button><button id="pxFromText">PXT → tuval</button><label>x<input id="pxTX" type="number" value="0"></label><label>y<input id="pxTY" type="number" value="0"></label></div>
+  </details>
+</section>
+
+<section id="tab-help" class="tab">
+  <article id="helpBody">Yükleniyor…</article>
+</section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

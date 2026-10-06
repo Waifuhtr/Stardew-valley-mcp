@@ -1,0 +1,14 @@
+{
+  "name": "stardew-sim",
+  "version": "1.0.0",
+  "description": "Stardew Valley map simulator (all maps + interiors) and pixel-art toolkit for AI-assisted modding. CLI, MCP server and mobile web app.",
+  "type": "module",
+  "bin": { "sdv": "cli/sdv.mjs", "px": "cli/px.mjs", "stardew-sim-mcp": "mcp/server.mjs" },
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "extract": "node tools/extract.mjs",
+    "test": "node tools/test.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

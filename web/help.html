@@ -1,0 +1,52 @@
+<h2>Stardew Sim</h2>
+<p>Stardew Valley'nin <b>tüm haritaları</b> (259 harita: kasaba, çiftlik, tüm bina içleri, madenler, ada, festival varyantları)
+çıkarılıp simüle edilebilir hale getirildi. Amaç: yapay zekaların mod yaparken (yeni yer, bina, NPC, sprite) ekran görüntüsüne ihtiyaç
+duymadan tutarlı çalışması.</p>
+
+<h3>Web (bu sayfa)</h3>
+<ul>
+<li><b>Harita</b>: haritayı seç, karaktere dokun/tıkla → oraya yürür (A*). Kapılara/warp'lara yürüyünce içeri girer.
+Klavye: ok tuşları/WASD, <code>E</code>/boşluk = önündeki karoyu incele. Mobil: D-pad, iki parmakla yakınlaştır, sürükle = kaydır.</li>
+<li>☰ menü: çarpışma katmanı (kırmızı=engel, mavi=su, sarı=kapı, siyah=boşluk), ızgara+koordinat, mevsim,
+<b>Simülasyon</b> (hedef harita + x,y → karakter kapılardan geçerek yürür), <b>Mod testi</b> (TMX yükle → yeni konum olarak gez
+ya da bir haritaya EditMap yaması olarak uygula; kontrol raporu alttaki panelde), giriş warpı ekleme, TMX/PNG indirme.</li>
+<li>Bağlantı paylaşımı: <code>#SeedShop@6,29/fall</code> = harita@x,y/mevsim. AI'ın verdiği linki açınca tam o karo gelir.</li>
+<li><b>Piksel</b>: mobil uyumlu editör (kalem, silgi, kova, damlalık, çizgi, dikdörtgen, ayna, geri al), kare ızgarası,
+animasyon önizleme, PNG aç/indir, <b>PXT metin</b> (AI'ın yazdığı sprite metnini yapıştır → tuvale çiz; ya da tuvali metne çevirip AI'a ver),
+<b>Haritada dene</b> (çizdiğin NPC sayfasıyla haritada yürü).</li>
+</ul>
+
+<h3>Yapay zekalar için (CLI / MCP)</h3>
+<pre>git clone https://github.com/Waifuhtr/Stardew-valley-mcp && cd Stardew-valley-mcp
+node cli/sdv.mjs help          # harita/simülasyon
+node cli/px.mjs help           # piksel
+claude mcp add --scope user stardew-sim -- node "$PWD/mcp/server.mjs"   # MCP: sdv + px araçları</pre>
+<p>Token tasarrufu için önce metin: <code>find</code> → <code>info</code> → <code>ascii x y w h</code> → <code>tile</code>; görüntü sadece gerekirse
+(<code>render --region</code>). Ayrıntılı rehber: <a href="https://github.com/Waifuhtr/Stardew-valley-mcp/blob/main/AGENTS.md">AGENTS.md</a>.</p>
+<pre>sdv find saloon
+sdv info SeedShop
+sdv ascii Town 30 50 30 25          # . zemin # engel ~ su D kapı W kenar-warp ! aksiyon
+sdv go Farm 64 15 Saloon 10 20      # çok haritalı yürüyüş simülasyonu
+sdv fit Town 60 75 5 4 --door 62,78 # buraya 5x4 bina sığar mı?
+sdv tmx JoshHouse -o MyHouse.tmx    # yeni yer için şablon
+sdv check MyHouse.tmx               # tutarlılık kontrolü
+sdv render Town --region 40,50,20,15 --actor 45,60,left --grid
+px draw - -o item.png --scale 8     # PXT metninden PNG
+px read sprites.png --frame 16,32,0 # PNG karesinden PXT</pre>
+
+<h3>PXT (metin sprite)</h3>
+<pre>pxt 8x8
+. transparent
+k #222034
+r #d04848
+--
+..kkkk..
+.krrrrk.
+krr..rrk
+kr....rk
+kr....rk
+krr..rrk
+.krrrrk.
+..kkkk..</pre>
+<p>Her satır bir piksel satırı; <code>4k</code> = <code>kkkk</code>. NPC sayfası: 64px genişlik, 16×32 kareler, satırlar aşağı/sağ/yukarı/sol.</p>
+<p style="opacity:.7">Oyun içeriği ConcernedApe'e aittir; bu araç yalnızca mod geliştirme referansıdır.</p>
