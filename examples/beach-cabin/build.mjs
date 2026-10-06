@@ -103,17 +103,24 @@ writePNG(path.join(MOD, 'assets/beach_cabin_exterior.png'), ext);
 writePNG(path.join(IMG, 'beach_cabin_exterior.png'), ext);
 
 // ---------------------------------------------------------------- interior tilesheet (8 x 6 tiles)
-// 0 void | 1,2 floor | 3 floor w/ wall shadow | 4 doormat | 5 wall top | 6 wall mid | 7 wall bottom
-// 8,9,16,17 window (2x2) | 10 shelf | 11 lamp | bed 18,19,26,27,34,35 | table 20,21,28,29 | plant 22,30 | rug 36,37,38,44,45,46
-const wallTop = `planks 0 0 16 16 v 5 ${RAMP.inwall} 3; frect 0 0 16 4 j; line 0 4 15 4 x; frect 0 5 16 2 #21000040`;
-const wallMid = `planks 0 0 16 16 v 5 ${RAMP.inwall} 4`;
-const wallBot = `planks 0 0 16 16 v 5 ${RAMP.inwall} 6; frect 0 10 16 6 D; line 0 10 15 10 y; line 0 11 15 11 W; line 0 15 15 15 d`;
+// Style matched to vanilla cabin interiors (compared side by side with ElliottHouse): wide low-contrast floor boards,
+// fine wall battens with beam + baseboard, thick rounded room frame, warm-lit windows with sun patches, 3/4 furniture.
+// 0 void | 1,2 floor | 3 floor under wall | 4 doormat | 5 wall top | 6 wall mid | 7 wall bottom | 8,9,16,17 window
+// 10 shelf | 11 sconce | 12-15,23,31,39,47,40,41 frame | bed 18,19,26,27,34,35 | table 20,21,28,29 | plant 22,30
+// rug 36-38,44-46 | 24,25 sun patch | 32 picture | 33 ceiling lamp | 42 stool | 43 sea chest
+const IN = { floor: '#3a1a0c,#5a2c12,#6e3a18,#80481e,#985a26', wall: '#2e180c,#46260f,#563014,#643a18,#74441e',
+  hog: '#3a100c,#5a1c14,#7a2a1c,#983a24,#b4502e', blue: '#121a4a,#1c2a7a,#2a40a8,#4a64c8,#7a94e0' };
+const K = ['#3a1e0c', '#8a5a26', '#b07a3a', '#6a3e18', '#2a1408']; // frame: inner -> outer
+const wallTop = `planks 0 0 16 16 v 3 ${IN.wall} 3; frect 0 0 16 4 #8a5a26; line 0 0 15 0 #b07a3a; line 0 3 15 3 #3a1e0c; frect 0 4 16 2 #21000050`;
+const wallMid = `planks 0 0 16 16 v 3 ${IN.wall} 4`;
+const wallBot = `planks 0 0 16 16 v 3 ${IN.wall} 6; frect 0 11 16 5 #3a1e0c; line 0 11 15 11 #8a5a26; line 0 12 15 12 #6a3e18`;
+const ring = (cx, cy, mx, my) => `mask rect ${mx} ${my} 5 5; ${[4, 3, 2, 1].map(r => `fcircle ${cx} ${cy} ${r} ${K[r]}`).join('; ')}; px ${cx} ${cy} ${K[0]}; unmask`;
 const sheet = applyOps(newImg(128, 96), `${PAL}
 frame 16 16 0; frect 0 0 16 16 #0e0a0c
-frame 16 16 1; planks 0 0 16 16 v 4 ${RAMP.floor} 71
-frame 16 16 2; planks 0 0 16 16 v 4 ${RAMP.floor} 72
-frame 16 16 3; planks 0 0 16 16 v 4 ${RAMP.floor} 73; frect 0 0 16 4 #4a201050; frect 0 4 16 2 #4a201028
-frame 16 16 4; planks 0 0 16 16 v 4 ${RAMP.floor} 74; frrect 1 3 14 10 x; frrect 2 4 12 8 c; line 3 6 12 6 C; line 3 9 12 9 C; line 2 11 13 11 x
+frame 16 16 1; planks 0 0 16 16 h 8 ${IN.floor} 71
+frame 16 16 2; planks 0 0 16 16 h 8 ${IN.floor} 72
+frame 16 16 3; planks 0 0 16 16 h 8 ${IN.floor} 73; frect 0 0 16 3 #21000060; frect 0 3 16 2 #21000030
+frame 16 16 4; planks 0 0 16 16 h 8 ${IN.floor} 74; frrect 1 3 14 10 #5a2414; frrect 2 4 12 8 #8a3a22; line 3 6 12 6 #a8502c; line 3 9 12 9 #a8502c; line 2 11 13 11 #5a2414; frect 1 13 14 1 #21000040
 frame 16 16 5; ${wallTop}
 frame 16 16 6; ${wallMid}
 frame 16 16 7; ${wallBot}
@@ -122,44 +129,58 @@ frame 16 16 9; ${wallTop}
 frame 16 16 16; ${wallMid}
 frame 16 16 17; ${wallMid}
 endframe
-frrect 3 22 26 22 f; frect 4 23 24 20 y; frect 5 24 22 18 W
-frect 6 25 20 8 h; frect 6 25 20 3 H; frect 6 33 20 3 G; frect 6 36 20 4 g; line 6 36 25 36 h; px 9 38 h; px 18 37 h; px 21 39 G
-line 16 25 16 39 y; line 6 31 25 31 y; line 6 40 25 40 D
-frect 6 25 3 15 S; line 8 25 8 39 s; frect 23 25 3 15 S; line 23 25 23 39 s
-frect 2 44 28 3 y; line 2 44 29 44 Y; line 2 46 29 46 D; rrect 1 43 30 5 f
+// window (2x2): wood frame, warm daylight panes, muntins, sill
+frrect 6 19 20 27 f; frect 7 20 18 25 W; line 7 20 24 20 y; frect 9 22 14 21 #f8f0c8; frect 9 33 14 10 #f0d890; line 9 42 22 42 #d8b060
+line 16 22 16 42 W; line 9 32 22 32 W; line 15 22 15 42 #d8b060; px 10 23 #ffffff; px 11 23 #ffffff; px 10 24 #ffffff
+frect 4 45 24 3 y; line 4 45 27 45 Y; line 4 47 27 47 D; rrect 3 44 26 5 f
+// shelf + sconce
 frame 16 16 10; ${wallMid}; frect 1 10 14 2 W; line 1 10 14 10 y; line 1 12 14 12 d; frect 2 5 2 5 L; px 2 4 E; px 3 4 e; frrect 6 7 4 3 S; px 7 6 s; px 8 6 S; frect 11 5 2 5 a; px 11 4 B; px 12 6 B
 frame 16 16 11; ${wallMid}; fcircle 8 8 6 #ffd06030; line 6 3 10 3 d; frrect 6 4 5 8 f; frect 7 5 3 6 k; px 7 5 Z; line 6 12 10 12 d
+// room frame
+frame 16 16 12; ${[4, 3, 2, 1, 0].map((k, i) => `line ${11 + i} 0 ${11 + i} 15 ${K[k]}`).join('; ')}
+frame 16 16 13; ${[0, 1, 2, 3, 4].map((k, i) => `line ${i} 0 ${i} 15 ${K[k]}`).join('; ')}
+frame 16 16 14; ${[0, 1, 2, 3, 4].map((k, i) => `line 0 ${i} 15 ${i} ${K[k]}`).join('; ')}
+frame 16 16 15; ${[4, 3, 2, 1, 0].map((k, i) => `line 0 ${11 + i} 15 ${11 + i} ${K[k]}`).join('; ')}
+frame 16 16 39; ${ring(15, 15, 11, 11)}
+frame 16 16 47; ${ring(0, 15, 0, 11)}
+frame 16 16 23; ${ring(15, 0, 11, 0)}
+frame 16 16 31; ${ring(0, 0, 0, 0)}
+frame 16 16 40; ${[0, 1, 2, 3, 4].map((k, i) => `line 0 ${i} 15 ${i} ${K[k]}`).join('; ')}; ${[0, 1, 2, 3, 4].map(k => `line ${15 - k} ${k + 1} ${15 - k} 15 ${K[k]}`).join('; ')}
+frame 16 16 41; ${[0, 1, 2, 3, 4].map((k, i) => `line 0 ${i} 15 ${i} ${K[k]}`).join('; ')}; ${[0, 1, 2, 3, 4].map(k => `line ${k} ${k + 1} ${k} 15 ${K[k]}`).join('; ')}
+// picture (seascape) + ceiling lamp
+frame 16 16 32; ${wallMid}; frect 2 2 12 10 #21000040; frrect 2 1 12 10 f; frect 3 2 10 8 #c88a3a; frect 4 3 8 6 #8cccf4; frect 4 6 8 3 #3a7ac0; line 4 6 11 6 #d8f4ff; px 9 4 #fff0a0; px 10 4 #fff0a0; px 6 8 #5aa0e0
+frame 16 16 33; ${wallTop}; fcircle 8 11 7 #ffd06024; line 8 0 8 6 #2a1408; frrect 5 6 7 3 #3a1e0c; frect 6 9 5 4 k; px 6 9 Z; line 5 13 11 13 d; px 8 14 d
+// stool + sea chest
+frame 16 16 42; frect 4 14 9 2 #21000040; frrect 3 5 10 4 f; frect 4 6 8 2 W; line 4 6 11 6 y; frect 4 9 2 6 D; frect 10 9 2 6 D; line 5 12 10 12 w
+frame 16 16 43; frect 1 14 14 2 #21000040; frrect 1 4 14 11 f; frect 2 5 12 4 ${IN.hog.split(',')[3]}; line 2 5 13 5 ${IN.hog.split(',')[4]}; frect 2 9 12 5 ${IN.hog.split(',')[2]}; line 2 9 13 9 f; line 2 13 13 13 ${IN.hog.split(',')[1]}; frect 7 8 2 3 k; px 7 8 Z; px 2 5 K; px 13 5 K; px 2 13 K; px 13 13 K
+// sun patches (Back2, semi-transparent)
 endframe
-frrect 33 32 30 7 f; frect 34 33 28 5 w; line 34 33 61 33 y; line 34 37 61 37 D
-frrect 34 38 28 9 f; frect 35 39 26 7 S; line 35 45 60 45 q; frrect 36 39 11 5 t; frrect 49 39 11 5 t; line 37 43 45 43 q; line 50 43 58 43 q
-frrect 33 46 30 28 f; frect 34 47 28 26 U
-mask rect 34 47 28 26; frect 34 47 7 6 a; frect 48 47 7 6 a; frect 41 53 7 6 a; frect 55 53 7 6 a; frect 34 59 7 6 a; frect 48 59 7 6 a; frect 41 65 7 6 a; frect 55 65 7 6 a; unmask
-line 34 47 61 47 B; line 34 72 61 72 u
-frrect 33 72 30 6 f; frect 34 73 28 4 w; line 34 73 61 73 y; line 34 76 61 76 D
-fcircle 80 45 12 f; fcircle 80 45 11 D; fcircle 80 44 10 w; fcircle 79 43 8 W; fcircle 78 42 5 y; px 76 39 Y; px 77 39 Y
-frect 70 53 3 10 w; frect 87 53 3 10 w; line 70 53 70 62 y; line 72 53 72 62 D; line 87 53 87 62 y; line 89 53 89 62 D; frect 78 54 4 8 D; line 78 54 78 61 w
-line 69 62 73 62 f; line 86 62 90 62 f; rrect 69 52 5 11 f; rrect 86 52 5 11 f
-frrect 75 39 10 5 S; line 76 43 83 43 s; fcircle 80 38 2 R; px 79 37 C; fcircle 77 39 1 z; px 83 38 E
-frrect 99 52 10 10 c; line 100 52 107 52 C; line 100 61 107 61 x; rrect 98 51 12 12 f; line 99 54 108 54 x
-line 104 51 98 38 L; line 104 51 101 36 e; line 105 51 106 35 e; line 105 51 111 40 L; line 104 51 102 42 E
-line 105 51 109 44 E; line 104 51 97 45 e; px 98 38 E; px 111 40 E; px 101 36 E; px 106 35 E; line 103 51 100 48 l
+fpoly 5 49 26 49 28 59 7 59 #fff0b05a; line 16 49 17 59 #a0602030; line 6 54 27 54 #a0602030
+// bed 2x3 (3/4 view): carved headboard, pillows, quilt with folds, footboard
+frect 33 32 3 44 f; frect 60 32 3 44 f; frect 34 33 1 42 ${IN.hog.split(',')[4]}; frect 61 33 1 42 ${IN.hog.split(',')[3]}
+frrect 35 33 26 12 f; frect 36 34 24 10 ${IN.hog.split(',')[2]}; line 36 34 59 34 ${IN.hog.split(',')[4]}; frrect 39 36 18 6 ${IN.hog.split(',')[1]}; line 39 36 56 36 f; px 47 35 k; px 48 35 k
+frrect 37 41 11 6 f; frect 38 42 9 4 t; line 38 45 46 45 T; frrect 48 41 11 6 f; frect 49 42 9 4 t; line 49 45 57 45 T
+frect 35 47 26 3 t; line 35 49 60 49 T; frect 35 50 26 18 ${IN.blue.split(',')[2]}; line 35 50 60 50 ${IN.blue.split(',')[3]}
+line 41 51 40 66 ${IN.blue.split(',')[1]}; line 42 51 41 66 ${IN.blue.split(',')[3]}; line 54 51 55 66 ${IN.blue.split(',')[1]}; line 53 51 54 66 ${IN.blue.split(',')[3]}
+frect 35 64 26 4 ${IN.blue.split(',')[1]}; line 35 64 60 64 ${IN.blue.split(',')[3]}; line 36 59 46 58 ${IN.blue.split(',')[4]}
+frrect 34 67 28 10 f; frect 35 68 26 8 ${IN.hog.split(',')[2]}; line 35 68 60 68 ${IN.hog.split(',')[4]}; frrect 38 70 20 4 ${IN.hog.split(',')[1]}; line 38 70 57 70 f
+frect 34 77 3 2 f; frect 59 77 3 2 f; frect 36 78 24 1 #21000040
+// table 2x2 (3/4 view): top, apron, legs, jar of shells, book
+frect 68 61 24 2 #21000040
+frrect 66 40 28 11 f; frect 67 41 26 9 W; line 67 41 92 41 Y; line 67 44 92 44 w; line 67 47 92 47 w; px 72 45 D; px 85 42 D
+frect 67 50 26 4 D; line 67 53 92 53 d; frect 67 54 3 8 w; line 67 54 67 61 y; frect 90 54 3 8 w; line 92 54 92 61 d; rrect 66 49 28 6 f
+frrect 72 33 7 9 #2a5a5a; frect 73 34 5 7 #bfe4e0; line 73 34 73 40 #ffffff; px 75 38 C; px 76 37 S; px 74 39 z; frect 72 32 7 2 D
+frrect 82 38 9 4 f; frect 83 39 7 2 R; line 83 39 89 39 #e05a4a
+// potted palm (2 tall)
+frrect 99 52 10 10 c; line 100 52 107 52 C; line 100 61 107 61 x; rrect 98 51 12 12 f; line 99 54 108 54 x; frect 99 62 10 2 #21000040
+fpoly 104 51 96 42 98 40 105 49 e; fpoly 104 51 99 35 102 35 105 50 L; fpoly 105 51 110 38 112 40 106 51 e; fpoly 105 51 108 34 110 36 106 50 E
+fpoly 104 51 97 47 97 45 104 49 L; line 104 51 98 41 l; line 105 51 109 37 l; px 99 35 E; px 109 34 E
+// rug 3x2
 mask poly 67 70 72 65 104 65 109 70 109 89 104 94 72 94 67 89
 frect 64 64 48 32 U; frect 70 69 36 21 a; frect 74 73 28 13 t; frect 78 76 20 7 A; frect 84 78 8 3 Q
 line 64 67 111 67 B; line 64 91 111 91 u
 unmask
 line 67 70 72 65 f; line 72 65 104 65 f; line 104 65 109 70 f; line 109 70 109 89 f; line 109 89 104 94 f; line 104 94 72 94 f; line 72 94 67 89 f; line 67 89 67 70 f
-// room frame (Front layer over the black void): 12 left, 13 right, 14 bottom, 15 top, corners 39 TL 47 TR 23 BL 31 BR, 40/41 corridor joints
-frame 16 16 12; line 13 0 13 15 w; line 14 0 14 15 y; line 15 0 15 15 d
-frame 16 16 13; line 0 0 0 15 d; line 1 0 1 15 y; line 2 0 2 15 w
-frame 16 16 14; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w
-frame 16 16 15; line 0 13 15 13 w; line 0 14 15 14 y; line 0 15 15 15 d
-frame 16 16 39; frect 13 13 3 3 w; line 14 14 15 14 y; line 14 14 14 15 y; px 15 15 d
-frame 16 16 47; frect 0 13 3 3 w; line 0 14 1 14 y; line 1 14 1 15 y; px 0 15 d
-frame 16 16 23; frect 13 0 3 3 w; line 14 1 15 1 y; line 14 0 14 1 y; px 15 0 d
-frame 16 16 31; frect 0 0 3 3 w; line 0 1 1 1 y; line 1 0 1 1 y; px 0 0 d
-frame 16 16 40; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w; line 13 0 13 15 w; line 14 1 14 15 y; line 15 0 15 15 d
-frame 16 16 41; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w; line 0 0 0 15 d; line 1 1 1 15 y; line 2 0 2 15 w
-endframe
 `);
 writePNG(path.join(MOD, 'assets/beach_cabin_interior.png'), sheet);
 writePNG(path.join(IMG, 'beach_cabin_interior.png'), sheet);
@@ -190,11 +211,14 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
     if (y >= 4 || exit) set(Back, x, y, y === 4 ? 3 : (x + y * 3) % 5 ? 1 : 2);
     else set(Buildings, x, y, [5, 6, 7][y - 1]);
   }
-  for (const [x, y, i] of [[2, 1, 8], [3, 1, 9], [2, 2, 16], [3, 2, 17], [8, 1, 8], [9, 1, 9], [8, 2, 16], [9, 2, 17], [6, 2, 10], [5, 2, 11], [10, 2, 11]]) set(Buildings, x, y, i);
-  for (const [x, y, i] of [[1, 4, 18], [2, 4, 19], [1, 5, 26], [2, 5, 27], [1, 6, 34], [2, 6, 35]]) set(Buildings, x, y, i); // bed
-  for (const [x, y, i] of [[8, 5, 20], [9, 5, 21], [8, 6, 28], [9, 6, 29]]) set(Buildings, x, y, i);                      // table
-  set(Front, 10, 4, 22); set(Buildings, 10, 5, 30);                                                                        // potted palm
-  for (const [x, y, i] of [[4, 6, 36], [5, 6, 37], [6, 6, 38], [4, 7, 44], [5, 7, 45], [6, 7, 46]]) set(Back2, x, y, i);   // rug
+  for (const [x, y, i] of [[2, 1, 8], [3, 1, 9], [2, 2, 16], [3, 2, 17], [7, 1, 8], [8, 1, 9], [7, 2, 16], [8, 2, 17],
+    [5, 1, 33], [5, 2, 32], [10, 2, 10], [1, 2, 11]]) set(Buildings, x, y, i);                                            // windows, lamp, picture, shelf, sconce
+  for (const [x, y, i] of [[2, 4, 24], [3, 4, 25], [7, 4, 24], [8, 4, 25]]) set(Back2, x, y, i);                         // sun patches
+  for (const [x, y, i] of [[9, 4, 18], [10, 4, 19], [9, 5, 26], [10, 5, 27], [9, 6, 34], [10, 6, 35]]) set(Buildings, x, y, i); // bed
+  for (const [x, y, i] of [[2, 6, 20], [3, 6, 21], [2, 7, 28], [3, 7, 29]]) set(Buildings, x, y, i);                      // table
+  set(Buildings, 4, 7, 42); set(Buildings, 6, 4, 43);                                                                      // stool, sea chest
+  set(Front, 1, 4, 22); set(Buildings, 1, 5, 30);                                                                          // potted palm
+  for (const [x, y, i] of [[5, 6, 36], [6, 6, 37], [7, 6, 38], [5, 7, 44], [6, 7, 45], [7, 7, 46]]) set(Back2, x, y, i);   // rug
   set(Back2, door, 9, 4);                                                                                                  // doormat
   for (let y = 1; y <= 9; y++) { set(Front, 0, y, 12); set(Front, W - 1, y, 13); }                                       // room frame
   for (let x = 1; x <= W - 2; x++) { set(Front, x, 0, 15); if (x !== door) set(Front, x, 10, 14); }
