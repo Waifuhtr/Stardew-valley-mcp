@@ -26,7 +26,7 @@ export function parseFurniture(id, line, names = {}, namesTr = {}) {
 
 // sprite rect (px) + bounding box (tiles) + flip for a rotation — same math as Furniture.updateRotation
 export function layout(f, rot = 0, texW = 512) {
-  const cols = Math.floor(texW / 16);
+  const cols = Math.floor((f.tw || texW) / 16);
   const d = { x: (f.i % cols) * 16, y: Math.floor(f.i / cols) * 16, w: f.s[0] * 16, h: f.s[1] * 16 };
   let [bw, bh] = f.b; rot = ((rot % 4) + 4) % 4;
   if (f.r === 1) rot = 0;

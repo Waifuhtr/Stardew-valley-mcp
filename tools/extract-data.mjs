@@ -21,8 +21,8 @@ const extra = load(/AdditionalWallpaperFlooring\.xnb$/i) || [];
 if (!furn) throw new Error('Furniture.xnb not found');
 
 const items = {};
-for (const [id, line] of Object.entries(furn)) items[id] = parseFurniture(id, line, names, namesTr);
 const idx = JSON.parse(fs.readFileSync(path.join(out, 'index.json'), 'utf8'));
+for (const [id, line] of Object.entries(furn)) { const f = items[id] = parseFurniture(id, line, names, namesTr); if (idx.textures[f.tex]) f.tw = idx.textures[f.tex][0]; }
 const missingTex = [...new Set(Object.values(items).map(f => f.tex))].filter(t => !idx.textures[t]);
 const data = { version: 1, items, chairTiles: chairs,
   wallpaper: [{ Id: '', Texture: 'Maps/walls_and_floors', Count: 112 }, ...extra.filter(e => !e.IsFlooring)],
