@@ -88,6 +88,23 @@ NPC sheet: 64 px wide, 16×32 frames, rows = down, right, up, left (4 walk frame
 The web editor (🎨 tab) mirrors all of this for the human to check: layers, onion skin, select/move/copy, palette lock,
 ramp, Stardew row labels, live `check`, PXT import/export ("PXT → yeni katman" overlays an AI suggestion).
 
+## Real furniture, wallpaper, floors, seats
+
+Catalog `web/data/furniture.json` (645 vanilla furniture, EN+TR names, from Data/Furniture + Strings/Furniture;
+map seats from Data/ChairTiles; wallpaper/floor sets incl. AdditionalWallpaperFlooring). Rotation sprites, bounding
+boxes and seats follow the game's own rules (Furniture.updateRotation / GetSeatPositions).
+- `sdv furni find koltuk` / `--type rug` → `id name | type sprite box rotations price` (one line each).
+- `sdv furni info <id|name>` → per rotation: sprite, box, seats with facing. `furni show` only if you must see it.
+- `sdv place <map> <id> x y --rot 0-3` → OK/NO with reasons (floor vs wall item, overlaps, doors, cut-off paths);
+  `--save [--mod id]` persists into web/data/mods/<id>/mod.json (default `user`); `unplace` removes; `furni list <map>`.
+- `sdv walls wallpaper|floor` + `-o` swatch → `sdv decorate <map> --wallpaper 104 --floor 18 [--save]`
+  (sets: plain number = vanilla walls_and_floors, `MoreWalls:N` / `MoreFloors:N`).
+- `sdv seats <map>` (furniture + vanilla map benches), `sdv sit <map> x y` renders the NPC seated (front sprite over it).
+- ascii shows `f` furniture, `h` seat. Rugs/wall items don't block.
+- Shipping: `sdv bake <map> -o dir` → TMX + furniture tilesheet + `ChairTiles.json` (seats work in game via
+  `EditData Data/ChairTiles`, the mechanism vanilla benches use; lamps/windows add `Light`). Beds baked this way
+  are decoration only (no sleeping) — that needs real Furniture objects (SMAPI mod).
+
 ## Mods in the simulator
 
 `web/data/mods/<id>/mod.json` lists new locations and EditMap patches; CLI, MCP and web load them on top of vanilla

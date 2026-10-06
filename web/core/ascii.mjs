@@ -1,3 +1,4 @@
+import { layout, seats } from './furniture.mjs';
 // Token-cheap text views of a map. Works in browser and Node.
 
 export const LEGEND = ". floor  # blocked  ~ water  (space) void  D door/warp-in  W edge warp  ! action  @ actor  * path  ? overlay";
@@ -14,6 +15,11 @@ export function asciiMap(map, opts = {}) {
     const k = ch.get(y * map.w + x);
     if (!k && !/^(Warp|LockedDoorWarp|MagicWarp|Door)\b/.test(v)) put(x, y, '!');
   }
+  if (map.furniture?.length && map.catalog) for (const pl of map.furniture) {
+    const f = map.catalog[pl.id]; if (!f || f.t === 'rug' || /painting|window|sconce/.test(f.t)) continue;
+    const l = layout(f, pl.rot || 0); for (let y = 0; y < l.bh; y++) for (let x = 0; x < l.bw; x++) put(pl.x + x, pl.y + y, 'f');
+    for (const s of seats(f, pl, l)) put(Math.floor(s.x), s.y, 'h');
+  }
   for (const [x, y] of opts.path || []) put(x, y, '*');
   for (const [x, y, c] of opts.marks || []) put(x, y, c);
   const base = ' .#~D';
@@ -29,7 +35,7 @@ export function asciiMap(map, opts = {}) {
       let c = null;
       if (step === 1) c = ch.get(y * map.w + x) || base[map.cell(x, y)];
       else { // downsample: priority marks > W/D > # > ~ > . > void
-        const pri = '*@?WD!#~.  ';
+        const pri = '*@?WDhf!#~.  ';
         let best = ' ';
         for (let yy = y; yy < Math.min(y + step, y1); yy++) for (let xx = x; xx < Math.min(x + step, x1); xx++) {
           const k = ch.get(yy * map.w + xx) || base[map.cell(xx, yy)];

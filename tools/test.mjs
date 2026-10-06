@@ -43,6 +43,15 @@ await t('px diff', () => P('diff web/data/img/extra/sprites.png --frame 16,32,0,
 await t('px pal', () => P('pal weapons --top 4'), /^#\w{6}( #\w{6}){3}$/);
 await t('px copyframe', () => P(`ops new:32x16 -o ${tmp}/cf.png px 0 0 #fff; copyframe 16 16 0 1 flipx`), /32x16/);
 await t('render place', () => S(`render Town --region 40,55,10,8 --place examples/amethyst_sword.png@45,60 -o ${tmp}/pl.png`), /160x128/);
+await t('furni find', () => S('furni find koltuk'), /288 Mavi Koltuk \/ Blue Armchair \| armchair/);
+await t('furni info', () => S('furni info 416'), /rot1: sprite 2x3 @48,208 box 2x2 seats 1,0>right/);
+await t('place', () => S('place BeachCabin 0 7 8'), /^OK Meşe Sandalye/);
+await t('place wall', () => S('place BeachCabin 1614 4 5'), /^NO .*\nE wall item/);
+await t('seats', () => S('seats BeachCabin'), /4,6 >left Tropik Sandalye/);
+await t('map seats', () => S('seats Town'), /map bench/);
+await t('sit', () => S(`sit BeachCabin 4 6 -o ${tmp}/sit.png`), /facing left/);
+await t('decorate', () => S('decorate BeachCabin --wallpaper 3 --floor 2'), /30 wall tiles, \d+ floor tiles/);
+await t('bake', () => S(`bake BeachCabin -o ${tmp}/bake`), /seats/);
 await t('px spec', () => P('spec npc'), /16x32/);
 
 // MCP handshake

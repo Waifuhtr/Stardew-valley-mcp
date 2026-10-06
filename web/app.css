@@ -62,3 +62,4 @@ hr { border: 0; border-top: 1px solid var(--edge); }
 #pxPal i.lock { outline: 1px dashed #fff8; }
 #tab-px > .bar, #pxCheck, #pxTextBox { flex-shrink: 0; }
 #pxStage { min-height: 45vh; }
+#fList { max-height: 180px; overflow: auto; } #fList button { font-size: 12px; padding: 3px 6px; } #fList small { opacity: .6; }

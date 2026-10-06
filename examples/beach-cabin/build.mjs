@@ -211,15 +211,7 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
     if (y >= 4 || exit) set(Back, x, y, y === 4 ? 3 : (x + y * 3) % 5 ? 1 : 2);
     else set(Buildings, x, y, [5, 6, 7][y - 1]);
   }
-  for (const [x, y, i] of [[2, 1, 8], [3, 1, 9], [2, 2, 16], [3, 2, 17], [7, 1, 8], [8, 1, 9], [7, 2, 16], [8, 2, 17],
-    [5, 1, 33], [5, 2, 32], [10, 2, 10], [1, 2, 11]]) set(Buildings, x, y, i);                                            // windows, lamp, picture, shelf, sconce
-  for (const [x, y, i] of [[2, 4, 24], [3, 4, 25], [7, 4, 24], [8, 4, 25]]) set(Back2, x, y, i);                         // sun patches
-  for (const [x, y, i] of [[9, 4, 18], [10, 4, 19], [9, 5, 26], [10, 5, 27], [9, 6, 34], [10, 6, 35]]) set(Buildings, x, y, i); // bed
-  for (const [x, y, i] of [[2, 6, 20], [3, 6, 21], [2, 7, 28], [3, 7, 29]]) set(Buildings, x, y, i);                      // table
-  set(Buildings, 4, 7, 42); set(Buildings, 6, 4, 43);                                                                      // stool, sea chest
-  set(Front, 1, 4, 22); set(Buildings, 1, 5, 30);                                                                          // potted palm
-  for (const [x, y, i] of [[5, 6, 36], [6, 6, 37], [7, 6, 38], [5, 7, 44], [6, 7, 45], [7, 7, 46]]) set(Back2, x, y, i);   // rug
-  set(Back2, door, 9, 4);                                                                                                  // doormat
+  // furniture + wallpaper/floor are real game items, kept in web/data/mods/beach-cabin/mod.json (sdv place/decorate --save --mod beach-cabin)
   for (let y = 1; y <= 9; y++) { set(Front, 0, y, 12); set(Front, W - 1, y, 13); }                                       // room frame
   for (let x = 1; x <= W - 2; x++) { set(Front, x, 0, 15); if (x !== door) set(Front, x, 10, 14); }
   set(Front, 0, 0, 39); set(Front, W - 1, 0, 47); set(Front, 0, 10, 23); set(Front, W - 1, 10, 31);
@@ -231,8 +223,9 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
 }
 
 // ---------------------------------------------------------------- manifests (web/CLI mod + Content Patcher)
+const prev = fs.existsSync(path.join(WEB, 'mod.json')) ? JSON.parse(fs.readFileSync(path.join(WEB, 'mod.json'), 'utf8')) : {};
 fs.writeFileSync(path.join(WEB, 'mod.json'), JSON.stringify({
-  id: 'beach-cabin', title: 'Plaj Kabini',
+  id: 'beach-cabin', title: 'Plaj Kabini', furniture: prev.furniture, decor: prev.decor,
   images: { 'mods/beach-cabin/beach_cabin_exterior': [112, 112], 'mods/beach-cabin/beach_cabin_interior': [128, 96] },
   locations: { [INSIDE.name]: 'mods/beach-cabin/BeachCabin.json' },
   patches: [{ target: PLACE.map, file: 'mods/beach-cabin/BeachCabin_Exterior.json', x: PLACE.x, y: PLACE.y }],
@@ -244,11 +237,17 @@ fs.writeFileSync(path.join(MOD, 'manifest.json'), JSON.stringify({
   Name: 'Beach Cabin', Author: 'Waifuhtr', Version: '1.0.0', Description: 'A small enterable cabin on the beach (made with Stardew Sim).',
   UniqueID: 'Waifuhtr.BeachCabin', UpdateKeys: [], ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' },
 }, null, 2));
+// bake real furniture + wallpaper/floor (from mod.json) into the CP interior; seats via Data/ChairTiles
+const { bakeLocation } = await import('../../cli/commands.mjs');
+const baked = bakeLocation(INSIDE.name, 'z_beach_cabin_furniture');
+fs.writeFileSync(path.join(MOD, 'assets/BeachCabin.tmx'), mapToTmx(baked.map).replace(/source="(z_beach_cabin_interior)\.png"/, 'source="beach_cabin_interior.png"'));
+writePNG(path.join(MOD, 'assets/z_beach_cabin_furniture.png'), baked.sheet);
 fs.writeFileSync(path.join(MOD, 'content.json'), JSON.stringify({
   Format: '2.0.0',
   Changes: [
     { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin.tmx' },
     { Action: 'EditData', Target: 'Data/Locations', Entries: { [INSIDE.name]: { DisplayName: 'Beach Cabin', DefaultArrivalTile: { X: INSIDE.arrive[0], Y: INSIDE.arrive[1] }, CreateOnLoad: { MapPath: `Maps/${INSIDE.name}` } } } },
+    { Action: 'EditData', Target: 'Data/ChairTiles', Entries: baked.chairTiles },
     { Action: 'EditMap', Target: 'Maps/Beach', FromFile: 'assets/BeachCabin_Exterior.tmx', ToArea: { X: PLACE.x, Y: PLACE.y, Width: PLACE.w, Height: PLACE.h }, PatchMode: 'ReplaceByLayer' },
   ],
 }, null, 2));

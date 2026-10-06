@@ -3,14 +3,15 @@ import { mapOf, route, isVariant, mapWarps } from './core/world.mjs';
 import { seasonImg, DIRS } from './core/render.mjs';
 import { tmxToJson, mapToTmx } from './core/tmx.mjs';
 import { checkMap, connectivityDiff, checkFootprint } from './core/check.mjs';
-import { applyPatch, newProblems } from './core/patch.mjs';
+import { applyPatch, newProblems, applyDecor } from './core/patch.mjs';
+import { layout, drawPos, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, SEAT_TYPES, WALL_TYPES } from './core/furniture.mjs';
 import { initPixel } from './pixel.js';
 
 const $ = (s) => document.querySelector(s);
 const status = (t) => ($('#status').textContent = t);
 const S = {
   index: null, map: null, season: 'spring', zoom: innerWidth < 600 ? 2 : 3, cam: { x: 0, y: 0 }, follow: true,
-  imgs: new Map(), customImgs: {}, customMaps: {}, overrides: {}, extraWarps: {}, modPatches: {}, mods: [],
+  imgs: new Map(), customImgs: {}, customMaps: {}, overrides: {}, extraWarps: {}, modPatches: {}, mods: [], modFurn: {}, modDecor: {}, userFurn: {}, userDecor: {}, furn: null, fsel: null, frot: 0, fmode: null,
   below: null, above: null, overlay: null, animCells: [], sprite: null, speed: 5,
   P: { x: 0, y: 0, px: 0, py: 0, dir: 'down', moving: false, from: null, to: null, t: 0, path: [], walkT: 0 },
   plan: null, held: null,
@@ -42,8 +43,23 @@ async function getMap(name) {
   const m = new GameMap(j);
   let out = m;
   for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y);
+  const dec = { ...(S.modDecor[name] || {}), ...(S.userDecor[name] || {}) };
+  if (S.furn && (dec.wallpaper != null || dec.floor != null)) out = applyDecor(out, { wallpaper: dec.wallpaper != null ? resolveDecor(dec.wallpaper, 'wallpaper', S.furn.wallpaper) : null, floor: dec.floor != null ? resolveDecor(dec.floor, 'floor', S.furn.flooring) : null }, S.index.textures);
   for (const w of S.extraWarps[name] || []) out.warps.push(w);
+  setFurn(out);
   return out;
+}
+function setFurn(m) {
+  if (!S.furn) return;
+  const list = [...(S.modFurn[m.name] || []), ...(S.userFurn[m.name] || [])];
+  m.setFurniture(list, S.furn.items, furnitureBlocks(list, S.furn.items));
+  m.seatList = [...mapChairSeats(m, S.furn.chairTiles).map(s => ({ ...s, name: s.type })),
+    ...list.flatMap(pl => { const f = S.furn.items[pl.id]; return f ? furnSeats(f, pl, layout(f, pl.rot || 0)).map(s => ({ ...s, name: f.tr || f.n })) : []; })];
+}
+async function prepFurnImgs(m) {
+  const out = {};
+  for (const pl of m.furniture || []) { const f = S.furn.items[pl.id]; if (!f) continue; out[f.tex] ||= await loadImage(f.tex); if (SEAT_TYPES.has(f.t)) out[f.tex + 'Front'] ||= await loadImage(f.tex + 'Front'); }
+  S.furnImgs = out;
 }
 const known = (name) => !!S.index.maps[mapOf(name, S.index.maps)];
 
@@ -69,6 +85,7 @@ async function buildMap(m) {
     const ctx = (g === 'below' ? below : above).getContext('2d');
     for (const L of groups[g]) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) drawTile(ctx, m, L, x, y, 0);
   }
+  if (S.furn) await prepFurnImgs(m);
   S.below = below; S.above = above; S.groups = groups; S.map = m;
   // animated cells
   const cells = new Map();
@@ -144,6 +161,8 @@ function tryStep(nx, ny) {
   P.dir = dirOf(nx - P.x, ny - P.y);
   const w = m.warps.find(w => w[0] === nx && w[1] === ny);
   if (w) { S.warping = true; warp(w).finally(() => (S.warping = false)); return true; }
+  const seat = (m.seatList || []).find(s => Math.floor(s.x) === nx && s.y === ny);
+  if (seat && !m.walkable(nx, ny)) { P.seated = { ...seat, from: [P.x, P.y] }; P.dir = seat.dir; P.path = []; status(`oturdu: ${seat.name} (${seat.dir})`); return true; }
   if (!m.walkable(nx, ny)) return false;
   Object.assign(P, { moving: true, from: [P.x, P.y], to: [nx, ny], t: 0 });
   return true;
@@ -155,6 +174,7 @@ function update(dt) {
     if (P.t >= 1) { P.x = P.to[0]; P.y = P.to[1]; P.moving = false; P.px = P.x * 16; P.py = P.y * 16; if (!P.path.length && !S.held) updateHash(); }
     else { P.px = (P.from[0] + (P.to[0] - P.from[0]) * P.t) * 16; P.py = (P.from[1] + (P.to[1] - P.from[1]) * P.t) * 16; }
   }
+  if (P.seated) { if (S.held) { const [fx, fy] = P.seated.from; P.seated = null; Object.assign(P, { x: fx, y: fy, px: fx * 16, py: fy * 16 }); status('kalktı'); } if (S.follow) centerCam(); return; }
   if (!P.moving) {
     if (S.held) { P.path = []; S.plan = null; const [dx, dy] = DV[S.held]; if (!tryStep(P.x + dx, P.y + dy)) P.dir = S.held; }
     else if (P.path.length) { const [nx, ny] = P.path.shift(); if (!tryStep(nx, ny)) { P.path = []; status('yol tıkandı'); } }
@@ -178,6 +198,9 @@ function continuePlan() {
 }
 function walkTo(x, y) {
   const m = S.map, P = S.P;
+  if (P.seated) { const [fx, fy] = P.seated.from; P.seated = null; Object.assign(P, { x: fx, y: fy, px: fx * 16, py: fy * 16 }); }
+  const seat = (m.seatList || []).find(s => Math.floor(s.x) === x && s.y === y);
+  if (seat) { const p = findPath(m, P.x, P.y, x, y, { allowBlockedGoal: true }); S.plan = null; P.path = p ? p.slice(1) : []; return; }
   const w = m.warps.find(w => w[0] === x && w[1] === y);
   let p = w ? pathToWarp(m, P.x, P.y, x, y) : findPath(m, P.x, P.y, x, y);
   if (!p && !w) { p = findPath(m, P.x, P.y, x, y, { allowBlockedGoal: true }); if (p) p.pop(); }
@@ -207,8 +230,9 @@ function draw(t) {
   ctx.drawImage(S.below, 0, 0);
   // path preview
   if (S.P.path.length) { ctx.fillStyle = '#ffe60088'; for (const [x, y] of S.P.path) ctx.fillRect(x * 16 + 5, y * 16 + 5, 6, 6); }
-  drawActor(t);
+  drawObjects(t);
   if ($('#optFront').checked) ctx.drawImage(S.above, 0, 0);
+  if (S.fsel && S.fmode === 'place' && S.hover) drawFurnPreview();
   if ($('#optPass').checked) ctx.drawImage(S.overlay, 0, 0);
   if ($('#optWarps').checked) for (const [x, y, , , , k] of m.warps) {
     ctx.fillStyle = k === 'w' ? '#00ff7899' : '#ff00ff99';
@@ -217,8 +241,32 @@ function draw(t) {
   if ($('#optGrid').checked) drawGrid(z);
   if (S.sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1 / S.zoom; ctx.strokeRect(S.sel[0] * 16 + .5, S.sel[1] * 16 + .5, 15, 15); }
 }
+function furnItems(m) {
+  return (m.furniture || []).map(pl => { const f = S.furn?.items[pl.id]; if (!f) return null; const lay = layout(f, pl.rot || 0); return { pl, f, lay, pos: drawPos(pl, lay), z: f.t === 'rug' ? -1e9 : pl.y + lay.bh }; }).filter(Boolean);
+}
+function drawFurn(o, tex) {
+  const im = S.furnImgs?.[tex || o.f.tex]; if (!im) return;
+  const { src, flip } = o.lay;
+  if (flip) { ctx.save(); ctx.translate(o.pos.x + src.w, o.pos.y); ctx.scale(-1, 1); ctx.drawImage(im, src.x, src.y, src.w, src.h, 0, 0, src.w, src.h); ctx.restore(); }
+  else ctx.drawImage(im, src.x, src.y, src.w, src.h, o.pos.x, o.pos.y, src.w, src.h);
+}
+function drawObjects(t) {
+  const P = S.P, items = furnItems(S.map), py = P.seated ? P.seated.y + 1.01 : P.py / 16 + 1;
+  items.sort((a, b) => a.z - b.z);
+  let drawn = false;
+  for (const o of items) { if (!drawn && o.z > py) { drawActor(t); drawn = true; } drawFurn(o); }
+  if (!drawn) drawActor(t);
+  if (P.seated) for (const o of items) if (SEAT_TYPES.has(o.f.t)) drawFurn(o, o.f.tex + 'Front');
+}
+function drawFurnPreview() {
+  const f = S.furn.items[S.fsel], pl = { id: f.id, x: S.hover[0], y: S.hover[1], rot: S.frot };
+  const r = canPlace(S.map, f, pl, { placed: S.map.furniture, catalog: S.furn.items });
+  ctx.globalAlpha = 0.75; drawFurn({ f, lay: r.lay, pos: drawPos(pl, r.lay) }); ctx.globalAlpha = 1;
+  ctx.fillStyle = r.ok ? '#3f3a' : '#f33a'; for (const [x, y] of r.tiles) ctx.fillRect(x * 16, y * 16, 16, 16);
+}
 function drawActor(t) {
   const P = S.P, im = S.sprite; if (!im) return;
+  if (P.seated) { const cols = Math.floor(im.width / 16), fi = (DIRS[P.seated.dir] ?? 0) * cols; ctx.drawImage(im, (fi % cols) * 16, Math.floor(fi / cols) * 32, 16, 32, P.seated.x * 16, P.seated.y * 16 - 16 - 7, 16, 32); return; }
   const cols = Math.floor(im.width / 16), row = DIRS[P.dir] ?? 0;
   const f = P.moving || P.path.length ? Math.floor(P.walkT * 2) % 4 : 0;
   const fi = row * cols + f;
@@ -279,6 +327,7 @@ cv.addEventListener('pointerdown', e => {
   else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; gesture = { kind: 'pinch', d: Math.hypot(a.x - b.x, a.y - b.y), z: S.zoom }; }
 });
 cv.addEventListener('pointermove', e => {
+  if (S.fmode === 'place') { const r = cv.getBoundingClientRect(); S.hover = [Math.floor((S.cam.x + (e.clientX - r.left) / S.zoom) / 16), Math.floor((S.cam.y + (e.clientY - r.top) / S.zoom) / 16)]; }
   if (!ptrs.has(e.pointerId)) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!gesture) return;
@@ -296,7 +345,7 @@ const endPtr = (e) => {
   if (gesture?.kind === 'tap' && ptrs.size === 0 && S.map) {
     const r = cv.getBoundingClientRect();
     const x = Math.floor((S.cam.x + (e.clientX - r.left) / S.zoom) / 16), y = Math.floor((S.cam.y + (e.clientY - r.top) / S.zoom) / 16);
-    showTile(x, y); walkTo(x, y);
+    if (S.fmode && S.fsel != null) furnTap(x, y); else { showTile(x, y); walkTo(x, y); }
   }
   if (ptrs.size === 0) gesture = null;
 };
@@ -417,6 +466,49 @@ async function loadHelp() {
   $('#helpBody').innerHTML = await (await fetch('help.html')).text();
 }
 
+// ---------- furniture test bench (mirrors: sdv furni/place/unplace/decorate/seats) ----------
+function initFurnUI() {
+  if (!S.furn) return;
+  const list = $('#fList');
+  const show = () => {
+    const q = $('#fSearch').value.toLowerCase(), t = $('#fType').value;
+    const hits = Object.values(S.furn.items).filter(f => (!t || f.t === t) && (!q || f.n.toLowerCase().includes(q) || (f.tr || '').toLowerCase().includes(q) || f.id === q)).slice(0, 60);
+    list.innerHTML = hits.map(f => `<button data-id="${f.id}" class="${S.fsel === f.id ? 'on' : ''}" title="${f.n}">${f.tr || f.n}<small> ${f.t}${SEAT_TYPES.has(f.t) ? ' 🪑' : ''}</small></button>`).join('');
+  };
+  $('#fType').innerHTML = '<option value="">tümü</option>' + [...new Set(Object.values(S.furn.items).map(f => f.t))].sort().map(t => `<option>${t}</option>`).join('');
+  $('#fSearch').oninput = show; $('#fType').onchange = show;
+  list.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.fsel = b.dataset.id; S.fmode = 'place'; S.frot = 0; show(); status(`yerleştir: ${S.furn.items[S.fsel].tr || S.furn.items[S.fsel].n} — haritaya dokun`); $('#menu').hidden = true; };
+  $('#fRot').onclick = () => { S.frot = (S.frot + 1) % 4; };
+  $('#fDel').onclick = () => { S.fmode = S.fmode === 'del' ? null : 'del'; S.fsel = S.fmode ? '_' : null; status(S.fmode ? 'silmek için mobilyaya dokun' : ''); };
+  $('#fDone').onclick = () => { S.fmode = null; S.fsel = null; status('yerleştirme bitti'); };
+  $('#fCopy').onclick = () => {
+    const lines = [];
+    for (const [mp, l] of Object.entries(S.userFurn)) for (const p of l) lines.push(`sdv place ${mp} ${p.id} ${p.x} ${p.y} --rot ${p.rot} --save`);
+    for (const [mp, d] of Object.entries(S.userDecor)) lines.push(`sdv decorate ${mp}${d.wallpaper != null ? ' --wallpaper ' + d.wallpaper : ''}${d.floor != null ? ' --floor ' + d.floor : ''} --save`);
+    navigator.clipboard?.writeText(lines.join('\n')); $('#infoText').textContent = lines.join('\n') || 'henüz değişiklik yok';
+  };
+  $('#fDecor').onclick = async () => {
+    const w = $('#fWall').value.trim(), fl = $('#fFloor').value.trim(), d = S.userDecor[S.map.name] ||= {};
+    if (w !== '') d.wallpaper = w; if (fl !== '') d.floor = fl;
+    try { await loadMap(S.map.name, S.P.x, S.P.y); } catch (err) { status(err.message); }
+  };
+  show();
+}
+async function furnTap(x, y) {
+  const m = S.map, items = S.furn.items;
+  if (S.fmode === 'del') {
+    const l = S.userFurn[m.name] || []; const k = l.findIndex(p => { const lay = layout(items[p.id], p.rot || 0); return x >= p.x && y >= p.y && x < p.x + lay.bw && y < p.y + lay.bh; });
+    if (k < 0) return status('burada senin eklediğin mobilya yok'); l.splice(k, 1);
+  } else {
+    const f = items[S.fsel], pl = { id: f.id, x, y, rot: S.frot };
+    const r = canPlace(m, f, pl, { placed: m.furniture, catalog: items });
+    $('#infoText').textContent = `${r.ok ? 'OK' : 'OLMAZ'} ${f.tr || f.n} ${x},${y} rot${r.lay.rot}\n` + [...r.errors, ...r.warnings].join('\n');
+    if (!r.ok) return;
+    (S.userFurn[m.name] ||= []).push(pl);
+  }
+  setFurn(m); await prepFurnImgs(m); buildOverlay(m);
+}
+
 // ---------- mods (web/data/mods: new locations + EditMap patches, same as the CLI) ----------
 async function loadMods() {
   let ids = [];
@@ -430,6 +522,8 @@ async function loadMods() {
       S.customMaps[n] = j; S.index.maps[n] = { w: j.w, h: j.h, out: 0, warps: mapWarps(j), mod: id };
     }
     for (const p of m.patches || []) (S.modPatches[p.target] ||= []).push({ ...p, json: await (await fetch('data/' + p.file)).json() });
+    for (const [mp, list] of Object.entries(m.furniture || {})) (S.modFurn[mp] ||= []).push(...list);
+    for (const [mp, d] of Object.entries(m.decor || {})) S.modDecor[mp] = d;
   }
   for (const t of Object.keys(S.modPatches)) { const mm = await getMap(t); S.index.maps[t].warps = mm.warps; }
   if (S.mods.length) status('modlar: ' + S.mods.map(m => m.title).join(', '));
@@ -439,7 +533,9 @@ async function loadMods() {
 (async () => {
   resize();
   S.index = await (await fetch('data/index.json')).json();
+  try { S.furn = await (await fetch('data/furniture.json')).json(); } catch { S.furn = null; }
   await loadMods();
+  initFurnUI();
   fillList();
   S.sprite = await loadImage('extra/sprites');
   window.addEventListener('sprite', (e) => { S.sprite = e.detail; status('sprite haritada'); });

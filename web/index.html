@@ -42,6 +42,12 @@
     <div class="row"><label><input type="radio" name="tmxMode" value="loc" checked> Yeni konum</label><label><input type="radio" name="tmxMode" value="patch"> Haritaya yama (EditMap)</label></div>
     <div class="row" id="patchRow"><input id="patchMap" list="mapList" placeholder="Hedef harita"><input id="patchX" type="number" placeholder="x"><input id="patchY" type="number" placeholder="y"></div>
     <div class="row"><b>Giriş warpı:</b><input id="entMap" list="mapList" placeholder="Harita"><input id="entX" type="number" placeholder="x"><input id="entY" type="number" placeholder="y"> → <input id="entTX" type="number" placeholder="tx"><input id="entTY" type="number" placeholder="ty"><button id="btnEnt">Ekle</button></div>
+    <div class="row"><b>Mobilya (gerçek oyun eşyaları):</b></div>
+    <div class="row"><input id="fSearch" placeholder="ara: koltuk, kilim, lamba…"><select id="fType"></select></div>
+    <div class="row" id="fList"></div>
+    <div class="row"><button id="fRot">⟳ döndür</button><button id="fDel">🗑 sil modu</button><button id="fDone">✓ bitti</button><button id="fCopy">AI komutlarını kopyala</button></div>
+    <div class="row">Duvar <input id="fWall" placeholder="104 / MoreWalls:3" size="9"> Zemin <input id="fFloor" placeholder="18 / MoreFloors:2" size="9"><button id="fDecor">Uygula</button></div>
+    <hr>
     <div class="row"><button id="btnTmxExport">Bu haritayı TMX indir</button><button id="btnShot">PNG indir</button></div>
   </div>
   <div id="stage"><canvas id="cv"></canvas>

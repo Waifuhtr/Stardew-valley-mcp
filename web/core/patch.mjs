@@ -38,3 +38,31 @@ export function applyPatch(target, patch, x, y, mode = 'ReplaceByLayer') {
   j.layers = order.map(id => ({ id, vis: true, arr: layers[id] }));
   return new GameMap(j);
 }
+
+// wallpaper / flooring like DecoratableLocation: wall strips (3 tiles) over each floor column, 2x2 floor pattern.
+// decor = {wallpaper:{tex,n,startRow}, floor:{tex,n,startRow}} (see furniture.resolveDecor); textures = index.textures
+import { wallTiles, wallpaperTile, floorTile } from './furniture.mjs';
+export function applyDecor(map, decor, textures = {}) {
+  const j = { name: map.name, w: map.w, h: map.h, props: { ...map.props }, sheets: map.sheets.map(s => ({ ...s })), anim: map.anim, tp: map.tp };
+  const layers = Object.fromEntries(map.layerOrder.map(id => [id, new Uint16Array(map.layers[id])]));
+  const sheetFor = (tex) => {
+    let s = j.sheets.find(x => x.img === tex);
+    if (!s) { const [w, h] = textures[tex] || [256, 688]; const first = Math.max(...j.sheets.map(x => x.first + x.cols * x.rows)); s = { id: 'z_' + tex.split('/').pop(), img: tex, cols: w / 16, rows: h / 16, first, tp: {} }; j.sheets.push(s); }
+    return s;
+  };
+  let walls = 0, floors = 0;
+  if (decor.wallpaper) {
+    const s = sheetFor(decor.wallpaper.tex), W = s.cols * 16;
+    for (const t of wallTiles(map)) { layers.Buildings[t.y * map.w + t.x] = s.first + wallpaperTile(decor.wallpaper.n, t.part, W); walls++; }
+  }
+  if (decor.floor) {
+    const s = sheetFor(decor.floor.tex), W = s.cols * 16;
+    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+      if (!map.baseWalkable(x, y) || !map.gid('Back', x, y) || map.gid('Buildings', x, y)) continue;
+      layers.Back[y * map.w + x] = s.first + floorTile(decor.floor.n, x % 2, y % 2, W, decor.floor.startRow); floors++;
+    }
+  }
+  j.layers = map.layerOrder.map(id => ({ id, vis: true, arr: layers[id] }));
+  const out = new GameMap(j); out.decorStats = { walls, floors };
+  return out;
+}

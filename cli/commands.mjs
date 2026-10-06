@@ -6,7 +6,9 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { readPNG, writePNG, encodePNG } from '../lib/png.mjs';
 import { GameMap, findPath, pathToMoves, pathToWarp } from '../web/core/map.mjs';
-import { applyPatch, newProblems } from '../web/core/patch.mjs';
+import { applyPatch, newProblems, applyDecor } from '../web/core/patch.mjs';
+import { bakeFurniture } from './bake.mjs';
+import { layout, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, wallTiles, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { asciiMap, LEGEND } from '../web/core/ascii.mjs';
 import { route, incoming, mapOf, isVariant, mapWarps } from '../web/core/world.mjs';
 import { renderMap, SEASONS } from '../web/core/render.mjs';
@@ -20,7 +22,9 @@ export const DATA = process.env.SDV_DATA || path.join(ROOT, 'web/data');
 let INDEX = null;
 const mapCache = new Map(), imgCache = new Map();
 // mods in web/data/mods (new locations + EditMap patches) are applied on top of vanilla; SDV_VANILLA=1 disables
-const MODS = { locs: {}, patches: {} };
+const MODS = { locs: {}, patches: {}, furniture: {}, decor: {} };
+let FURN = null;
+export const furnData = () => (FURN ||= fs.existsSync(path.join(DATA, 'furniture.json')) ? JSON.parse(fs.readFileSync(path.join(DATA, 'furniture.json'), 'utf8')) : { items: {}, chairTiles: {}, wallpaper: [], flooring: [] });
 function index() {
   if (INDEX) return INDEX;
   INDEX = JSON.parse(fs.readFileSync(path.join(DATA, 'index.json'), 'utf8'));
@@ -34,6 +38,8 @@ function index() {
         MODS.locs[n] = j; INDEX.maps[n] = { w: j.w, h: j.h, out: j.props.Outdoors ? 1 : 0, warps: mapWarps(j), mod: id };
       }
       for (const p of m.patches || []) (MODS.patches[p.target] ||= []).push({ ...p, mod: id });
+      for (const [mp, list] of Object.entries(m.furniture || {})) for (const f of list) (MODS.furniture[mp] ||= []).push({ ...f, mod: id });
+      for (const [mp, d] of Object.entries(m.decor || {})) MODS.decor[mp] = { ...d, mod: id };
     }
     for (const t of Object.keys(MODS.patches)) { const mm = loadMap(t); INDEX.maps[t].warps = mm.warps; INDEX.maps[t].mod = MODS.patches[t].map(p => p.mod).join(','); }
   }
@@ -52,10 +58,45 @@ export function loadMap(name) {
   if (!mapCache.has(n)) {
     let m = new GameMap(MODS.locs[n] || JSON.parse(fs.readFileSync(path.join(DATA, 'maps', n + '.json'), 'utf8')));
     for (const p of MODS.patches[n] || []) m = applyPatch(m, new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, p.file), 'utf8'))), p.x, p.y);
+    if (MODS.decor[n]) m = decorMap(m, MODS.decor[n]);
+    setFurn(m, MODS.furniture[n] || []);
     mapCache.set(n, m);
   }
   return mapCache.get(n);
 }
+function decorMap(m, d) {
+  const fd = furnData();
+  return applyDecor(m, { wallpaper: d.wallpaper != null ? resolveDecor(d.wallpaper, 'wallpaper', fd.wallpaper) : null, floor: d.floor != null ? resolveDecor(d.floor, 'floor', fd.flooring) : null }, index().textures);
+}
+function setFurn(m, list) { const cat = furnData().items; m.setFurniture(list, cat, furnitureBlocks(list, cat)); }
+// user edits persist in web/data/mods/<mod>/mod.json (default mod "user") so CLI, MCP and web share them
+function editMod(id, fn) {
+  const dir = path.join(DATA, 'mods', id), f = path.join(dir, 'mod.json'), list = path.join(DATA, 'mods/index.json');
+  fs.mkdirSync(dir, { recursive: true });
+  const m = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { id, title: id };
+  fn(m); fs.writeFileSync(f, JSON.stringify(m, null, 1));
+  const ids = fs.existsSync(list) ? JSON.parse(fs.readFileSync(list, 'utf8')) : [];
+  if (!ids.includes(id)) fs.writeFileSync(list, JSON.stringify([...ids, id]));
+  INDEX = null; mapCache.clear(); for (const k of Object.keys(MODS)) MODS[k] = {};
+}
+export function bakeLocation(name, sheetName) {
+  const m = loadMap(name), sn = sheetName || 'z_' + m.name.replace(/\W/g, '_').toLowerCase() + '_furniture';
+  return { ...bakeFurniture(m, furnData().items, getImg, sn), sheetName: sn };
+}
+const fname = (f) => f.tr ? `${f.tr} / ${f.n}` : f.n;
+const fline = (f) => `${f.id} ${fname(f)} | ${f.t} ${f.s.join('x')} box ${f.b.join('x')} r${f.r} ${f.p}g${f.tex !== 'TileSheets/furniture' ? ' ' + f.tex.split('/').pop() : ''}`;
+function findFurn(q) {
+  const items = furnData().items; if (items[q]) return items[q];
+  const l = String(q).toLowerCase(), hit = Object.values(items).find(f => f.n.toLowerCase() === l || (f.tr || '').toLowerCase() === l);
+  if (!hit) throw new Error(`unknown furniture "${q}" (try: sdv furni find ${q})`);
+  return hit;
+}
+function allSeats(m) {
+  const cat = furnData().items, out = mapChairSeats(m, furnData().chairTiles).map(s => ({ ...s, name: 'map ' + s.type }));
+  for (const pl of m.furniture || []) { const f = cat[pl.id]; if (f) for (const s of furnSeats(f, pl, layout(f, pl.rot || 0))) out.push({ ...s, name: fname(f), at: `${pl.x},${pl.y}` }); }
+  return out;
+}
+
 const inflate = async (b, kind) => new Uint8Array(kind === 'gzip' ? zlib.gunzipSync(b) : zlib.inflateSync(b));
 async function loadAnyMap(spec) {
   if (/\.tmx$/i.test(spec)) {
@@ -104,7 +145,7 @@ function groupWarps(ws) { // collapse runs of edge warps
 export const SDV_HELP = `sdv <cmd> ... (coords are tiles; 1 tile=16px)
 maps [filter]                      list locations (WxH, o=outdoors)
 info <map> [--full]                size, props, warps out/in, actions
-ascii <map> [x y w h] [--step n] [--at x,y] [--no-ruler]   ${LEGEND}
+ascii <map> [x y w h] [--step n] [--at x,y] [--no-ruler]   ${LEGEND} f furniture h seat
 tile <map> x y                     layers/tile index/properties at tile
 path <map> x1 y1 x2 y2 [--ascii]   A* walk (moves like "R5 D3")
 go <map> x y <target> [tx ty]      multi-map walk through doors/warps
@@ -115,7 +156,13 @@ sheet <img> [--idx i] [-o f.png --grid]   tilesheet info / index grid image
 tmx <map> -o f.tmx                 export vanilla map to Tiled TMX (mod template)
 check <file.tmx|map> [--locs A,B]  validate a custom map (layers, sheets, warps, connectivity)
 fit <map> x y w h [--door x,y]     can a w*h structure go here? (blocking, cut paths, door reachability)
-patch <map> <patch.tmx> x y [--mode Replace] [-o f.png]   EditMap preview: apply, check, render area`;
+patch <map> <patch.tmx> x y [--mode Replace] [-o f.png]   EditMap preview: apply, check, render area
+furni find <text> [--type chair] | furni info <id|name> | furni show <id|name> [-o f.png] | furni list <map>   real game furniture (TR/EN)
+place <map> <id|name> x y [--rot 0-3] [--save] [--mod id]   check placement (floor/wall/overlap/doors/paths); --save keeps it
+unplace <map> x y [--mod id]       remove saved furniture covering x,y
+seats <map> | sit <map> x y [-o f.png]   seats (furniture + map benches/Data/ChairTiles), facing; sit renders the NPC seated
+bake <map> -o dir [--name sheet]  export decorated map for a mod: TMX + furniture tilesheet + Data/ChairTiles entries (seats work in game)
+walls [wallpaper|floor] [-o f.png] | decorate <map> [--wallpaper N|MoreWalls:N] [--floor N|MoreFloors:N] [--save] [--mod id]`;
 
 export async function sdv(argv) {
   const { pos, fl } = parseArgs(argv);
@@ -220,7 +267,7 @@ export async function sdv(argv) {
       let marks = [];
       if (fl.path) { const [a, b, c, d] = nums(fl.path); const pt = findPath(m, a, b, c, d); if (pt) marks = pt.map(([x, y]) => [x, y, [255, 230, 0, 150]]); }
       const season = SEASONS.includes(fl.season) ? fl.season : 'spring';
-      const img = renderMap(m, { getImg, textures: ix.textures, season, region, scale: +fl.scale || 1, actors, grid: !!fl.grid, overlay: fl.pass ? 'pass' : null, marks });
+      const img = renderMap(m, { getImg, textures: ix.textures, season, region, scale: +fl.scale || 1, actors, grid: !!fl.grid, overlay: fl.pass ? 'pass' : null, marks, furniture: m.furniture, catalog: furnData().items });
       const o = fl.o || path.join(process.env.TMPDIR || '/tmp', `sdv-${m.name.replace(/\W/g, '_')}.png`);
       const png = encodePNG(img); fs.writeFileSync(o, png);
       return { text: `wrote ${o} ${img.width}x${img.height}`, image: { path: o, png } };
@@ -289,6 +336,97 @@ export async function sdv(argv) {
         ...r.errors.map(e => 'E ' + e), ...r.warnings.map(e => 'W ' + e),
         Object.keys(pm.props).length ? `i patch map properties not copied (use CP MapProperties/AddWarps): ${Object.keys(pm.props).join(',')}` : '',
         asciiMap(m, { x: region[0], y: region[1], w: region[2], h: region[3] }), `wrote ${o}`].filter(Boolean).join('\n'), image: { path: o, png } };
+    }
+    case 'furni': {
+      const sub = p[0], cat = furnData().items;
+      if (sub === 'find') {
+        const q = p.slice(1).join(' ').toLowerCase(), t = fl.type ? String(fl.type).toLowerCase() : null;
+        const hits = Object.values(cat).filter(f => (!t || f.t === t) && (!q || f.id === q || f.n.toLowerCase().includes(q) || (f.tr || '').toLowerCase().includes(q) || f.t === q));
+        return { text: hits.slice(0, +fl.limit || 40).map(fline).join('\n') + (hits.length > (+fl.limit || 40) ? `\n(+${hits.length - (+fl.limit || 40)} more, use --limit)` : '') || 'nothing' };
+      }
+      if (sub === 'info') {
+        const f = findFurn(p.slice(1).join(' '));
+        const rots = [0, 1, 2, 3].slice(0, f.r === 1 ? 1 : f.r === 2 ? 2 : 4).map(r => { const l = layout(f, r); const st = furnSeats(f, { x: 0, y: 0 }, l); return `rot${r}: sprite ${l.src.w / 16}x${l.src.h / 16} @${l.src.x},${l.src.y}${l.flip ? ' flipped' : ''} box ${l.bw}x${l.bh}${st.length ? ' seats ' + st.map(s => `${s.x},${s.y}>${s.dir}`).join(' ') : ''}`; });
+        const pr = { '-1': 'default (indoors)', 0: 'indoors', 1: 'outdoors', 2: 'anywhere' }[f.pr] || f.pr;
+        return { text: [fline(f), `texture ${f.tex} sprite#${f.i}, placement ${pr}${WALL_TYPES.has(f.t) ? ', wall-mounted' : f.t === 'rug' ? ', walkable rug' : ''}${SEAT_TYPES.has(f.t) ? ', sittable' : ''}`, ...rots].join('\n') };
+      }
+      if (sub === 'show') {
+        const f = findFurn(p.slice(1).join(' ')), tex = getImg(f.tex), n = f.r === 1 ? 1 : f.r === 2 ? 2 : 4;
+        const ls = [0, 1, 2, 3].slice(0, n).map(r => layout(f, r)), W = ls.reduce((a, l) => a + l.src.w + 4, 0), H = Math.max(...ls.map(l => l.src.h)) + 8;
+        const img = newImg(W * 3, H * 3, [40, 40, 40, 255]); let x = 0;
+        for (const [r, l] of ls.entries()) { blit(img, tex, l.src.x, l.src.y, l.src.w, l.src.h, x * 3, (H - l.src.h) * 3, 3, l.flip); drawText(img, r, x * 3 + 1, 1, [255, 255, 0, 255], 2); x += l.src.w + 4; }
+        const o = fl.o || path.join(process.env.TMPDIR || '/tmp', `furni-${f.id}.png`), png = encodePNG(img); fs.writeFileSync(o, png);
+        return { text: `${fline(f)}\nwrote ${o} (rotations 0..${n - 1} left to right)`, image: { path: o, png } };
+      }
+      if (sub === 'list') {
+        const m = loadMap(p[1]);
+        return { text: (m.furniture || []).map(pl => `${pl.x},${pl.y} rot${pl.rot || 0} ${fline(cat[pl.id])}${pl.mod ? ' [' + pl.mod + ']' : ''}`).join('\n') || 'no furniture' };
+      }
+      throw new Error('furni find|info|show|list');
+    }
+    case 'place': {
+      const m = loadMap(p[0]), f = findFurn(p[1]), pl = { id: f.id, x: +p[2], y: +p[3], rot: +fl.rot || 0 };
+      const r = canPlace(m, f, pl, { placed: m.furniture || [], catalog: furnData().items });
+      const lines = [`${r.ok ? 'OK' : 'NO'} ${fname(f)} at ${pl.x},${pl.y} rot${r.lay.rot} box ${r.lay.bw}x${r.lay.bh}`, ...r.errors.map(e => 'E ' + e), ...r.warnings.map(e => 'W ' + e)];
+      const st = furnSeats(f, pl, r.lay); if (st.length) lines.push('seats: ' + st.map(s => `${s.x},${s.y}>${s.dir}`).join(' '));
+      if (r.ok && !WALL_TYPES.has(f.t) && f.t !== 'rug') {
+        const after = m.furniture.concat([pl]); const t = new GameMap(m.j); t.setFurniture(after, furnData().items, furnitureBlocks(after, furnData().items));
+        const cd = connectivityDiff(m, t); if (cd.lostWarps.length) lines.push(`E blocks the way to warps ${cd.lostWarps.join(' ')}`); if (cd.lostTiles) lines.push(`W ${cd.lostTiles} floor tiles become unreachable`);
+      }
+      if (fl.save && r.ok) { editMod(fl.mod || 'user', mm => { ((mm.furniture ||= {})[m.name] ||= []).push(pl); }); lines.push(`saved to mods/${fl.mod || 'user'}`); }
+      const marks = r.tiles.map(([x, y]) => [x, y, '?']);
+      lines.push(asciiMap(fl.save && r.ok ? loadMap(p[0]) : m, { x: Math.max(0, pl.x - 4), y: Math.max(0, pl.y - 4), w: r.lay.bw + 8, h: r.lay.bh + 8, marks: fl.save ? [] : marks }));
+      return { text: lines.join('\n') };
+    }
+    case 'unplace': {
+      const m = loadMap(p[0]), x = +p[1], y = +p[2], cat = furnData().items, id = fl.mod || 'user'; let removed = null;
+      editMod(id, mm => { const list = mm.furniture?.[m.name] || []; const k = list.findIndex(pl => { const l = layout(cat[pl.id], pl.rot || 0); return x >= pl.x && y >= pl.y && x < pl.x + l.bw && y < pl.y + l.bh; }); if (k >= 0) removed = list.splice(k, 1)[0]; });
+      return { text: removed ? `removed ${fname(cat[removed.id])} at ${removed.x},${removed.y} from mods/${id}` : `nothing of mods/${id} at ${x},${y}` };
+    }
+    case 'seats': {
+      const m = loadMap(p[0]);
+      return { text: allSeats(m).map(s => `${s.x},${s.y} >${s.dir} ${s.name}${s.at ? ' @' + s.at : ''}`).join('\n') || 'no seats' };
+    }
+    case 'sit': {
+      const m = loadMap(p[0]), x = +p[1], y = +p[2];
+      const st = allSeats(m).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+      if (!st || Math.hypot(st.x - x, st.y - y) > 2) return { text: `no seat near ${x},${y}. sdv seats ${m.name}` };
+      const region = [Math.max(0, Math.floor(st.x) - 4), Math.max(0, Math.floor(st.y) - 5), 9, 8];
+      const img = renderMap(m, { getImg, textures: ix.textures, region, scale: +fl.scale || 3, furniture: m.furniture, catalog: furnData().items,
+        actors: [{ img: readPNG(fl.sprite || path.join(DATA, 'img/extra/sprites.png')), x: st.x, y: st.y, dir: st.dir, seated: true }] });
+      const o = fl.o || path.join(process.env.TMPDIR || '/tmp', `sit-${m.name}.png`), png = encodePNG(img); fs.writeFileSync(o, png);
+      const near = [[0, 1], [1, 0], [-1, 0], [0, -1]].map(([dx, dy]) => [Math.round(st.x) + dx, Math.round(st.y) + dy]).filter(q => m.walkable(...q));
+      return { text: `sits on ${st.name} at ${st.x},${st.y} facing ${st.dir}; reachable from ${near.map(q => q.join(',')).join(' ') || 'nowhere!'}\nwrote ${o}`, image: { path: o, png } };
+    }
+    case 'walls': {
+      const kind = p[0] === 'floor' ? 'flooring' : 'wallpaper', sets = furnData()[kind];
+      let t = sets.map(e => `${e.Id || '(vanilla)'} ${e.Texture} ids ${e.Id ? e.Id + ':' : ''}0..${e.Count - 1}`).join('\n');
+      if (fl.o) {
+        const e = sets.find(x => (x.Id || '') === (fl.set || '')) || sets[0], tex = getImg(e.Texture), isF = kind === 'flooring';
+        const cw = isF ? 32 : 16, ch = isF ? 32 : 48, per = 8, n = e.Count, S = 2, img = newImg(per * (cw + 4) * S, Math.ceil(n / per) * (ch + 10) * S, [30, 30, 30, 255]);
+        for (let i = 0; i < n; i++) { const pr = tex.width / cw, sx = (i % pr) * cw, sy = (e.Id ? 0 : isF ? 336 : 0) + Math.floor(i / pr) * ch; const dx = (i % per) * (cw + 4) * S, dy = Math.floor(i / per) * (ch + 10) * S; drawText(img, i, dx + 1, dy + 1, [255, 255, 0, 255], 1); blit(img, tex, sx, sy, cw, ch, dx, dy + 8 * S, S); }
+        const png = encodePNG(img); fs.writeFileSync(fl.o, png); t += `\nwrote ${fl.o}`; return { text: t, image: { path: fl.o, png } };
+      }
+      return { text: t + '\nuse: walls wallpaper -o w.png [--set MoreWalls] to see them' };
+    }
+    case 'bake': {
+      const r = bakeLocation(p[0], fl.name), dir = fl.o || 'baked';
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, r.map.name.replace(/\W/g, '_') + '.tmx'), mapToTmx(r.map));
+      writePNG(path.join(dir, r.sheetName + '.png'), r.sheet);
+      fs.writeFileSync(path.join(dir, 'ChairTiles.json'), JSON.stringify(r.chairTiles, null, 1));
+      const ext = [...new Set(r.map.sheets.filter(s => !s.missing && !/^Maps\//.test(s.img)).map(s => s.img))];
+      return { text: `baked ${r.map.name}: ${r.tiles} furniture tiles, ${Object.keys(r.chairTiles).length / 2} seats, ${r.lights} lights -> ${dir}/\nCP: Load Maps/<name> FromFile the .tmx (ship ${r.sheetName}.png${ext.length ? ' + ' + ext.join(', ') : ''} next to it) and EditData Data/ChairTiles with ChairTiles.json` };
+    }
+    case 'decorate': {
+      let m = loadMap(p[0]);
+      if (fl.wallpaper == null && fl.floor == null) return { text: `wall tiles: ${wallTiles(m).length}; pass --wallpaper N and/or --floor N (see: sdv walls)` };
+      const d = { wallpaper: fl.wallpaper != null ? String(fl.wallpaper) : undefined, floor: fl.floor != null ? String(fl.floor) : undefined };
+      const out = decorMap(m, d);
+      let t = `${m.name}: ${out.decorStats.walls} wall tiles, ${out.decorStats.floors} floor tiles`;
+      if (fl.save) { editMod(fl.mod || 'user', mm => { (mm.decor ||= {})[m.name] = { ...(mm.decor?.[m.name] || {}), ...Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)) }; }); t += ` — saved to mods/${fl.mod || 'user'}`; }
+      if (fl.o) { setFurn(out, m.furniture || []); const img = renderMap(out, { getImg, textures: ix.textures, scale: +fl.scale || 2, furniture: out.furniture, catalog: furnData().items }); const png = encodePNG(img); fs.writeFileSync(fl.o, png); t += `\nwrote ${fl.o}`; return { text: t, image: { path: fl.o, png } }; }
+      return { text: t };
     }
     default: throw new Error(`unknown command ${cmd}\n${SDV_HELP}`);
   }

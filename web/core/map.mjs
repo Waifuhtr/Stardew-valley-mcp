@@ -47,13 +47,22 @@ export class GameMap {
     if (bp.NPCBarrier) return 1;
     return 1;
   }
+  // furniture: [{id,x,y,rot}] + catalog (furniture.json items); blocks tiles except rugs / wall items
+  setFurniture(list, catalog, blocks) { this.furniture = list; this.catalog = catalog; this._fblocks = blocks; this._pass = null; }
+  baseWalkable(x, y) { return this.in(x, y) && this.baseGrid()[y * this.w + x] === 1; }
   passGrid() {
     if (this._pass) return this._pass;
+    const g = new Uint8Array(this.baseGrid());
+    for (const k of this._fblocks || []) { const [x, y] = k.split(',').map(Number); if (this.in(x, y)) g[y * this.w + x] = 0; }
+    return (this._pass = g);
+  }
+  baseGrid() {
+    if (this._base) return this._base;
     const g = new Uint8Array(this.w * this.h);
     for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) { const c = this.cell(x, y); g[y * this.w + x] = c === 1 || c === 4 ? 1 : 0; }
     // warp tiles inside the map are walkable targets
     for (const [x, y] of this.warps) if (this.in(x, y)) g[y * this.w + x] = 1;
-    return (this._pass = g);
+    return (this._base = g);
   }
   walkable(x, y) { return this.in(x, y) && this.passGrid()[y * this.w + x] === 1; }
   // interactive tiles (Action / TouchAction), as [x,y,layer,value]

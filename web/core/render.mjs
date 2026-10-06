@@ -1,5 +1,6 @@
 // Software map renderer (Node / headless). The browser uses canvas but follows the same rules.
 import { newImg, blit, fillRect, text } from './raster.mjs';
+import { layout, drawPos, SEAT_TYPES } from './furniture.mjs';
 
 export const SEASONS = ['spring', 'summer', 'fall', 'winter'];
 
@@ -37,14 +38,28 @@ export function renderMap(map, opts) {
       blit(out, im, (s.idx % cols) * 16, Math.floor(s.idx / cols) * 16, 16, 16, (x - rx) * T, (y - ry) * T, S);
     }
   };
+  const actorOne = (a) => {
+    const fw = a.fw || 16, fh = a.fh || 32, row = DIRS[a.dir || 'down'] ?? 0;
+    const cols = Math.floor(a.img.width / fw);
+    const fi = row * cols + (a.frame || 0);
+    blit(out, a.img, (fi % cols) * fw, Math.floor(fi / cols) * fh, fw, fh,
+      Math.round((a.x - rx) * T + (T - fw * S) / 2), Math.round((a.y - ry + 1) * T - fh * S - (a.seated ? 5 * S : 0)), S);
+  };
+  // furniture (opts.furniture = [{id,x,y,rot}], opts.catalog) y-sorted with actors; seat fronts drawn over sitters
   const drawActors = () => {
-    for (const a of opts.actors || []) {
-      const fw = a.fw || 16, fh = a.fh || 32, row = DIRS[a.dir || 'down'] ?? 0;
-      const cols = Math.floor(a.img.width / fw);
-      const fi = row * cols + (a.frame || 0);
-      blit(out, a.img, (fi % cols) * fw, Math.floor(fi / cols) * fh, fw, fh,
-        (a.x - rx) * T + (T - fw * S) / 2, (a.y - ry + 1) * T - fh * S, S);
+    const cat = opts.catalog || {}, objs = [], fronts = [];
+    for (const pl of opts.furniture || []) {
+      const f = cat[pl.id]; if (!f) continue;
+      const lay = layout(f, pl.rot || 0), tex = opts.getImg(f.tex); if (!tex) continue;
+      const pos = drawPos(pl, lay), item = { kind: 'f', f, lay, tex, pos, z: f.t === 'rug' ? -1e9 : pl.y + lay.bh };
+      objs.push(item);
+      if (SEAT_TYPES.has(f.t)) { const ft = opts.getImg(f.tex + 'Front'); if (ft) fronts.push({ ...item, tex: ft }); }
     }
+    for (const a of opts.actors || []) objs.push({ kind: 'a', a, z: a.y + 1 + (a.seated ? 0.01 : 0) });
+    objs.sort((p, q) => p.z - q.z);
+    const drawF = (o) => blit(out, o.tex, o.lay.src.x, o.lay.src.y, o.lay.src.w, o.lay.src.h, Math.round(o.pos.x * S - rx * T), Math.round(o.pos.y * S - ry * T), S, o.lay.flip);
+    for (const o of objs) o.kind === 'a' ? actorOne(o.a) : drawF(o);
+    if ((opts.actors || []).some(a => a.seated)) for (const o of fronts) drawF(o);
   };
   let actorsDone = false;
   for (const id of map.layerOrder) {
