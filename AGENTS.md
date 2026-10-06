@@ -74,6 +74,14 @@ Other: `px read sheet.png --frame 16,32,0` (PNG → PXT), `px layers f.pxt [-o d
 `px preview f.png --frames 16,32,0,1,2,3`, `px slice`/`px pack`, `px ops-help` (px line rect frect circle fill replace
 outline flip rot shift mirror hue sat light quantize dither paste frame copy move copyframe remap snap).
 
+Vanilla look (what made the beach cabin stop looking artificial):
+- one material family per object (warm weathered wood), max one muted accent; no pure white, no bright primaries.
+- hand-picked 5-step ramps per material; dark outline = darkest wood tone (#2a160e), never black.
+- boards: lit top edge + dark gap + butt joints + short knot dashes (`planks`/`dplanks`); no random single-pixel noise.
+- roofs: boards run down each slope (`dplanks` 135/45 under a `mask poly`), thick fascia, deep solid shadow under eaves.
+- windows look dark from outside (interior), tiny reflection; ground it: contact shadow, grass tufts, props at the base.
+- compare against a vanilla neighbour with `sdv render <map> --region ...` before finishing.
+
 NPC sheet: 64 px wide, 16×32 frames, rows = down, right, up, left (4 walk frames each). Portraits: 64×64, 2 columns.
 The web editor (🎨 tab) mirrors all of this for the human to check: layers, onion skin, select/move/copy, palette lock,
 ramp, Stardew row labels, live `check`, PXT import/export ("PXT → yeni katman" overlays an AI suggestion).

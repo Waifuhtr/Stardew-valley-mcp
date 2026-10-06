@@ -138,7 +138,7 @@ flipx | flipy | rot (90 cw) | shift dx dy | mirror (left half -> right) | hue de
 quantize n | dither x y w h c1 c2 | paste file x y [sx sy w h] | frame fw fh i (select frame as canvas origin) | endframe
 copy sx sy w h dx dy | move sx sy w h dx dy | copyframe fw fh src dst [flipx] | remap c1,c2,.. d1,d2,.. | snap [c1,c2,..] (to locked palette)
 fpoly x1 y1 x2 y2 ... c | mask x y w h | mask poly x1 y1 ... | mask opaque | unmask  (mask clips every later op; add "and" to intersect)
-textures (RAMP = c1,c2,.. dark->light or ramp:#hex): planks x y w h h|v size RAMP [seed] | shingles x y w h sw sh RAMP [seed]
+textures (RAMP = c1,c2,.. dark->light or ramp:#hex): planks x y w h h|v size RAMP [seed] | dplanks x y w h angle size RAMP [seed] (boards at any angle, e.g. roof slopes) | shingles x y w h sw sh RAMP [seed]
 bricks x y w h bw bh mortar RAMP [seed] | gradient x y w h c1 c2 [v|h] (dithered; transparent side is skipped) | noise x y w h c amount [seed]
 colors may have alpha (#00000055) -> blended (shadows, glow)`;
 
@@ -210,21 +210,23 @@ export function applyOps(im, script, { loadImg, lockPal } = {}) {
       case 'noise': { // noise x y w h c amount seed : sparse speckles (only on opaque pixels)
         const [x, y, w, h] = n, c = C(a[4]), amt = +a[5] || 0.08, r = rng(+a[6] || 1);
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const v = r(); if (v < amt && get(img, x + i + ox, y + j + oy)[3]) P(x + i, y + j, c); } break; }
-      case 'planks': { // planks x y w h h|v size ramp [seed] : clapboard/boards with tone jitter, edge light/shadow, grain, nails
-        const [x, y, w, h] = n, vert = a[4] === 'v', sz = +a[5] || 4, rp = R(a[6]), r = rng(+a[7] || 7), L = rp.length;
-        const len = vert ? h : w, across = vert ? w : h;
-        for (let b = 0; b * sz < across; b++) {
-          const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (r() - 0.5) * 1.6))), seam = Math.floor(r() * len * 0.8) + 6;
-          for (let k = 0; k < sz && b * sz + k < across; k++) for (let t = 0; t < len; t++) {
-            let c = rp[tone];
-            if (k === 0) c = rp[Math.min(L - 1, tone + 1)];
-            if (k === sz - 1) c = rp[Math.max(0, tone - 1)];
-            if (k > 0 && k < sz - 1 && r() < 0.06) c = rp[Math.max(0, tone - 1)]; // grain
-            if (t === seam % len && sz > 2) c = rp[0];
-            if ((t === (seam + 2) % len || t === (seam - 3 + len) % len) && k === 1 && sz > 3) c = rp[0]; // nails
-            const px = vert ? x + b * sz + k : x + t, py = vert ? y + t : y + b * sz + k;
-            P(px, py, c);
-          }
+      case 'planks': case 'dplanks': {
+        // planks x y w h h|v size RAMP [seed] | dplanks x y w h angle size RAMP [seed]
+        // boards: lit top edge, dark gap at the bottom, butt joints, short knot dashes (no random single pixels)
+        const [x, y, w, h] = n, ang = op === 'planks' ? (a[4] === 'v' ? 90 : 0) : +a[4];
+        const sz = +a[5] || 4, rp = R(a[6]), seed = +a[7] || 7, L = rp.length, rad = ang * Math.PI / 180, ca = Math.cos(rad), sa = Math.sin(rad);
+        const hsh = (p, q) => { let t = Math.imul(p * 374761393 + q * 668265263 + seed * 2246822519, 1274126177); t ^= t >>> 13; t = Math.imul(t, 1103515245); return ((t ^ (t >>> 16)) >>> 0) / 4294967296; };
+        for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) {
+          const t = px * ca + py * sa, u = -px * sa + py * ca, b = Math.floor(u / sz), k = u - b * sz;
+          const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (hsh(b, 0) - 0.5) * 1.5)));
+          const seg = 14 + Math.floor(hsh(b, 1) * 26), off = Math.floor(hsh(b, 2) * seg), tt = Math.floor(t) + off, jt = ((tt % seg) + seg) % seg;
+          let c = rp[tone];
+          if (k >= sz - 1) c = rp[0];
+          else if (k < 1) c = rp[Math.min(L - 1, tone + 1)];
+          else if (jt === 0) c = rp[0];
+          else if (jt === 1) c = rp[Math.min(L - 1, tone + 1)];
+          else if (sz >= 4 && ang % 90 === 0 && Math.abs(k - sz / 2) < 0.6) { const kn = Math.floor(tt / 5); if (hsh(b, kn + 9) < 0.14) c = rp[Math.max(0, tone - 1)]; }
+          P(px, py, c);
         }
         break; }
       case 'shingles': { // shingles x y w h sw sh ramp [seed] : staggered shingles, light top-left, dark bottom
