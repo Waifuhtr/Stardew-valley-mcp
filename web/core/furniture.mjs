@@ -94,8 +94,9 @@ export function mapChairSeats(map, chairTiles) {
 export function wallTiles(map) {
   const set = new Set();
   for (let y = 1; y < map.h; y++) for (let x = 0; x < map.w; x++) {
-    if (!map.walkable(x, y) || map.walkable(x, y - 1)) continue;
-    for (let k = 1; k <= 3 && y - k >= 0; k++) { if (map.walkable(x, y - k) || !map.gid('Buildings', x, y - k)) break; set.add(`${x},${y - k}:${3 - k}`); }
+    const ok = (a, b) => (map.baseWalkable ? map.baseWalkable(a, b) : map.walkable(a, b));
+    if (!ok(x, y) || ok(x, y - 1)) continue;
+    for (let k = 1; k <= 3 && y - k >= 0; k++) { if (ok(x, y - k) || !map.gid('Buildings', x, y - k)) break; set.add(`${x},${y - k}:${3 - k}`); }
   }
   return [...set].map(s => { const [xy, part] = s.split(':'); const [x, y] = xy.split(',').map(Number); return { x, y, part: +part }; });
 }
