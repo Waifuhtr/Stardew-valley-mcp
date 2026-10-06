@@ -58,3 +58,7 @@ hr { border: 0; border-top: 1px solid var(--edge); }
   header nav button { padding: 4px 7px; }
 }
 #tab-px { overflow-y: auto; }
+#pxCheck { padding: 2px 8px; font: 11px/1.3 ui-monospace, Menlo, monospace; background: var(--panel); opacity: .9; white-space: nowrap; overflow-x: auto; }
+#pxPal i.lock { outline: 1px dashed #fff8; }
+#tab-px > .bar, #pxCheck, #pxTextBox { flex-shrink: 0; }
+#pxStage { min-height: 45vh; }

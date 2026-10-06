@@ -54,20 +54,29 @@ k #222034
 s #f0c8a0
 --
 ......kkkk......
-.....kssssk.....
+@layer hat 4 0        <- optional layers: name + offset; rows may be smaller than the canvas
+.kkkk.
 ```
-Rows: one char per pixel, `4k` = `kkkk`. Palette chars: any non-digit.
+Rows: one char per pixel, `4k` = `kkkk`. Palette chars: any non-digit. Layers are cropped to content, so editing
+one part (hair, outfit) means reading/writing only that block.
 
-- `px draw - -o out.png --scale 8` (PXT via stdin / MCP `input`) → PNG + zoomed preview.
-- `px read sheet.png --frame 16,32,0` → PXT of one frame (edit it, draw it back).
-- `px ops in.png -o out.png "pal k #222034; outline k; mirror; hue 30"`, `px ops new:16x16 -o a.png "fcircle 8 8 5 #e33"`;
-  `px ops-help` lists ops (px, line, rect, frect, circle, fill, replace, outline, flip, rot, shift, mirror, hue, sat,
-  light, quantize, dither, paste, frame fw fh i …). `frame 16 32 5` makes later coordinates relative to frame 5.
-- `px spec [npc|portrait|object|craftable|crop|furniture|tile|building…]`, `px check f.png --as npc`.
-- `px palette web/data/img/Maps/spring_town.png --top 24` — borrow vanilla colors.
-- `px preview f.png -o p.png --frames 16,32,0,1,2,3` — animation strip; `px slice` / `px pack` for sheets.
+Cheap workflow for a sprite:
+1. `px spec npc` (sizes/rows) → `px pal weapons --top 16` or `px ramp #8e6fd1 5` (pick colors, one line).
+2. Write PXT → `px draw - -o out.png --scale 8 --lock weapons` (lock = snap to palette, reports off-palette px).
+3. Look at the preview only once; fix by editing rows or with ops instead of rewriting.
+4. Animation: draw frame 0, then `px ops sheet.png -o sheet.png "copyframe 16 32 0 1; frame 16 32 1; move 4 20 3 6 4 19"`
+   and verify with `px diff sheet.png --frame 16,32,0,1` (changed pixels grouped by color, no image needed)
+   or `px onion sheet.png --frame 16,32,1 -o o.png` (frame over faint neighbours).
+5. In-game look: `sdv render Town --region 40,55,10,8 --place item.png@45,60`.
+
+Other: `px read sheet.png --frame 16,32,0` (PNG → PXT), `px layers f.pxt [-o dir]`, `px draw f.pxt --layer hat` /
+`--hide hat`, `px snap in.png --pal TileSheets/weapons`, `px new npc -o f.png`, `px check f.png --as npc`,
+`px preview f.png --frames 16,32,0,1,2,3`, `px slice`/`px pack`, `px ops-help` (px line rect frect circle fill replace
+outline flip rot shift mirror hue sat light quantize dither paste frame copy move copyframe remap snap).
 
 NPC sheet: 64 px wide, 16×32 frames, rows = down, right, up, left (4 walk frames each). Portraits: 64×64, 2 columns.
+The web editor (🎨 tab) mirrors all of this for the human to check: layers, onion skin, select/move/copy, palette lock,
+ramp, Stardew row labels, live `check`, PXT import/export ("PXT → yeni katman" overlays an AI suggestion).
 
 ## Data
 

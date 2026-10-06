@@ -12,7 +12,7 @@ import { route, incoming, mapOf, isVariant } from '../web/core/world.mjs';
 import { renderMap, SEASONS } from '../web/core/render.mjs';
 import { tmxToJson, mapToTmx } from '../web/core/tmx.mjs';
 import { checkMap, checkFootprint, nearestWalkable, connectivityDiff } from '../web/core/check.mjs';
-import { parsePxt, toPxt, applyOps, palette, checkSprite, SPECS, OPS_HELP, strip } from '../web/core/pixel.mjs';
+import { parsePxt, toPxt, toLayeredPxt, flatten, applyOps, palette, checkSprite, SPECS, OPS_HELP, strip, snapToPalette, ramp, frameDiff, onion } from '../web/core/pixel.mjs';
 import { newImg, blit, text as drawText, fillRect } from '../web/core/raster.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -87,7 +87,7 @@ path <map> x1 y1 x2 y2 [--ascii]   A* walk (moves like "R5 D3")
 go <map> x y <target> [tx ty]      multi-map walk through doors/warps
 route <from> <to>                  location hops
 find <text>                        search warps/actions/props in all maps
-render <map|file.tmx> [-o f.png] [--region x,y,w,h] [--scale n] [--season s] [--actor x,y[,dir]] [--sprite f.png] [--grid] [--pass] [--path x1,y1,x2,y2]
+render <map|file.tmx> [-o f.png] [--region x,y,w,h] [--scale n] [--season s] [--actor x,y[,dir]] [--sprite f.png] [--place img.png@x,y;...] [--grid] [--pass] [--path x1,y1,x2,y2]
 sheet <img> [--idx i] [-o f.png --grid]   tilesheet info / index grid image
 tmx <map> -o f.tmx                 export vanilla map to Tiled TMX (mod template)
 check <file.tmx|map> [--locs A,B]  validate a custom map (layers, sheets, warps, connectivity)
@@ -190,6 +190,10 @@ export async function sdv(argv) {
       if (!region && m.w * m.h > 90 * 90 && !fl.full) return { text: `map is ${m.w}x${m.h}; pass --region x,y,w,h (or --full). Tip: ascii first to find the area.` };
       const actors = [];
       if (fl.actor) { const [ax, ay, dir] = String(fl.actor).split(','); actors.push({ img: readPNG(fl.sprite || path.join(DATA, 'img/extra/sprites.png')), x: +ax, y: +ay, dir: dir || 'down' }); }
+      if (fl.place) for (const spec of String(fl.place).split(';')) { // file.png@x,y : bottom-left of image on tile x,y
+        const [f, xy] = spec.split('@'), [px, py] = nums(xy), im = loadImgFile(f);
+        actors.push({ img: im, x: px + (im.width / 16 - 1) / 2, y: py, fw: im.width, fh: im.height });
+      }
       let marks = [];
       if (fl.path) { const [a, b, c, d] = nums(fl.path); const pt = findPath(m, a, b, c, d); if (pt) marks = pt.map(([x, y]) => [x, y, [255, 230, 0, 150]]); }
       const season = SEASONS.includes(fl.season) ? fl.season : 'spring';
@@ -268,33 +272,87 @@ export async function sdv(argv) {
 }
 
 // ---- px -----------------------------------------------------------------
-export const PX_HELP = `px <cmd> ... (pixel art; PXT = text sprite: palette lines "<char> #hex", "--", then rows; "4k" = kkkk)
-draw <in.pxt|-> -o out.png [--scale n]        PXT -> PNG (stdin/inline text with "-")
-read <img.png> [--rect x,y,w,h] [--frame fw,fh,i] [--rle]   PNG region -> PXT text
-ops <in.png|new:WxH> -o out.png "<op; op; ...>"  edit with ops (see 'px ops-help')
-palette <img.png> [--rect x,y,w,h] [--top n]   colors by use
-preview <img.png> -o out.png [--scale n] [--grid] [--frames fw,fh,i,j,...]   zoomed/grid/strip view
-spec [kind]                                   Stardew sprite size conventions
-check <img.png> --as <kind>                   validate against convention
-slice <img.png> fw fh -o dir                  split sheet into frames
-pack -o out.png --cols n f1.png f2.png ...    frames -> sheet`;
+export const PX_HELP = `px <cmd> ... (pixel art; PXT = text sprite: palette "<char> #hex", "--", rows; "4k"=kkkk; "@layer name x y" starts a layer)
+new <kind|WxH> -o f.png [--pxt]               blank canvas with Stardew size (kind: px spec)
+draw <f.pxt|-> -o out.png [--scale n] [--layer a,b] [--hide a,b] [--lock PAL]   PXT -> PNG ("-" = stdin/input)
+read <img.png> [--rect x,y,w,h] [--frame fw,fh,i] [--rle]   PNG region -> PXT
+layers <f.pxt|-> [-o dir]                     list layers (offset, size, colors); -o: one PNG per layer
+ops <in.png|new:WxH> -o out.png "<op; op>" [--lock PAL]   edit (px ops-help: copy/move/copyframe/remap/snap...)
+pal <img|texture key|#a,#b> [--top n]         palette on one line (texture key e.g. TileSheets/weapons)
+snap <in.png> --pal PAL -o out.png            force colors onto a palette (PAL = like pal)
+ramp <#hex> [n]                               hue-shifted shade ramp dark->light
+diff <a.png> [b.png] [--frame fw,fh,i,j]      changed pixels between frames/images, grouped by color
+onion <sheet.png> --frame fw,fh,i -o out.png  frame i over faint i-1 (red) / i+1 (blue)
+preview <img.png> -o out.png [--scale n] [--grid] [--frames fw,fh,i,j,...]
+spec [kind] | check <img.png> --as <kind> | slice <img.png> fw fh -o dir | pack -o out.png --cols n f1.png ...
+Ingame look: sdv render <map> --region ... --place item.png@x,y`;
+
+// palette spec -> [#hex...]: "#a,#b", image path, or vanilla texture key ("TileSheets/weapons", "weapons")
+function resolvePal(spec, top = 32) {
+  if (!spec) return null;
+  if (/^#/.test(spec)) return spec.split(/[ ,]+/).filter(Boolean);
+  let img = null;
+  if (fs.existsSync(spec)) img = readPNG(spec);
+  else { const key = Object.keys(index().textures).find(k => k === spec || k.split('/').pop() === spec); if (key) img = getImg(key); }
+  if (!img) throw new Error(`palette "${spec}" not found (use #hex list, a PNG path or a texture key)`);
+  return palette(img).filter(([k]) => k !== 'transparent' && k.length === 7).slice(0, top).map(([k]) => k);
+}
 
 export async function px(argv, stdinText) {
   const { pos, fl } = parseArgs(argv);
   const [cmd, ...p] = pos;
   const save = (img, o) => { const png = encodePNG(img); fs.writeFileSync(o, png); return { text: `wrote ${o} ${img.width}x${img.height}${img.warnings ? '\n' + img.warnings.join('\n') : ''}`, image: { path: o, png } }; };
   const up = (img, s) => { if (!s || s === 1) return img; const o = newImg(img.width * s, img.height * s); blit(o, img, 0, 0, img.width, img.height, 0, 0, s); return o; };
+  const readText = (a) => { const t = !a || a === '-' ? stdinText : fs.readFileSync(a, 'utf8'); if (!t) throw new Error('no PXT input'); return t; };
+  const lock = fl.lock ? resolvePal(String(fl.lock), +fl.top || 32) : null;
+  const sizeOf = (k) => { if (/^\d+x\d+$/.test(k)) return k.split('x').map(Number); const sp = SPECS[k]; if (!sp) throw new Error(`unknown kind; ${Object.keys(SPECS).join(' ')}`); const sz = { npc: [64, 128], portrait: [128, 192], craftable: [16, 32], crop: [128, 32], tree: [48, 96], fruittree: [48, 80], object: [16, 16], tile: [16, 16], furniture: [16, 32], building: [48, 48], emote: [64, 16], farmer_hat: [20, 80] }; return sz[k] || sp.frame; };
   switch (cmd) {
     case undefined: case 'help': return { text: PX_HELP };
     case 'ops-help': return { text: OPS_HELP };
     case 'spec': return { text: p[0] ? `${p[0]}: frame ${SPECS[p[0]]?.frame.join('x')} - ${SPECS[p[0]]?.note}` : Object.entries(SPECS).map(([k, v]) => `${k}: ${v.frame.join('x')} ${v.note}`).join('\n') };
     case 'draw': {
-      const src = p[0] === '-' || !p[0] ? stdinText : fs.readFileSync(p[0], 'utf8');
-      if (!src) throw new Error('no PXT input');
-      const img = parsePxt(src); const o = fl.o || 'out.png';
-      const r = save(img, o);
-      if (+fl.scale > 1) { const pv = o.replace(/\.png$/, '') + `@${fl.scale}x.png`; save(up(img, +fl.scale), pv); r.text += `\npreview ${pv}`; r.image = { path: pv, png: fs.readFileSync(pv) }; }
+      const im = parsePxt(readText(p[0])); const o = fl.o || 'out.png';
+      let img = im;
+      if (fl.layer || fl.hide) {
+        const only = fl.layer ? String(fl.layer).split(',') : null, hide = fl.hide ? String(fl.hide).split(',') : [];
+        img = flatten(im.layers.map(L => ({ ...L, hidden: L.hidden || (only && !only.includes(L.name)) || hide.includes(L.name) })), im.width, im.height);
+        img.warnings = im.warnings;
+      }
+      let note = '';
+      if (lock) { const r = snapToPalette(img, lock); img = Object.assign(r.img, { warnings: img.warnings }); note = `\nlock: ${r.changed} px snapped to palette`; }
+      const r = save(img, o); r.text += note + (im.layers.length > 1 ? `\nlayers: ${im.layers.map(L => L.name + (L.hidden ? '(hidden)' : '')).join(',')}` : '');
+      if (+fl.scale > 1) { const pv = o.replace(/\.png$/, '') + `@${fl.scale}x.png`; const png = encodePNG(up(img, +fl.scale)); fs.writeFileSync(pv, png); r.text += `\npreview ${pv}`; r.image = { path: pv, png }; }
       return r;
+    }
+    case 'new': {
+      const [w, h] = sizeOf(p[0] || '16x16'), img = newImg(w, h);
+      if (fl.pxt) return { text: `pxt ${w}x${h}\n. transparent\n--\n` + Array(h).fill('.'.repeat(w)).join('\n') };
+      const r = save(img, fl.o || 'new.png'); if (SPECS[p[0]]) r.text += `\n${SPECS[p[0]].note}`; delete r.image; return r;
+    }
+    case 'layers': {
+      const im = parsePxt(readText(p[0]));
+      const lines = im.layers.map(L => `${L.name} @${L.x},${L.y} ${L.img.width}x${L.img.height} ${palette(L.img).length - 1}c${L.hidden ? ' hidden' : ''}`);
+      if (fl.o) { fs.mkdirSync(fl.o, { recursive: true }); for (const L of im.layers) writePNG(path.join(fl.o, L.name + '.png'), flatten([{ ...L, hidden: false }], im.width, im.height)); lines.push(`wrote ${im.layers.length} PNGs to ${fl.o}/`); }
+      return { text: `${im.width}x${im.height}\n` + lines.join('\n') };
+    }
+    case 'pal': return { text: resolvePal(p.join(' '), +fl.top || 32).join(' ') };
+    case 'snap': {
+      const r = snapToPalette(loadImgFile(p[0]), resolvePal(String(fl.pal), +fl.top || 32));
+      const out = save(r.img, fl.o || 'snapped.png'); out.text += `\n${r.changed} px changed`; return out;
+    }
+    case 'ramp': return { text: ramp(p[0], +p[1] || 5).join(' ') };
+    case 'diff': {
+      let A = loadImgFile(p[0]), B = p[1] ? loadImgFile(p[1]) : A, ra, rb;
+      if (fl.frame) { const [fw, fh, i, j] = nums(fl.frame), cols = Math.floor(A.width / fw); ra = [(i % cols) * fw, Math.floor(i / cols) * fh, fw, fh]; rb = [(j % cols) * fw, Math.floor(j / cols) * fh]; }
+      else { if (!p[1]) throw new Error('diff needs two images or --frame fw,fh,i,j'); ra = [0, 0, Math.min(A.width, B.width), Math.min(A.height, B.height)]; rb = [0, 0]; }
+      const ch = frameDiff(A, ra, B, rb);
+      if (!ch.length) return { text: 'identical' };
+      const by = {}; for (const [x, y, c] of ch) (by[c] ||= []).push(`${x},${y}`);
+      return { text: `${ch.length} px differ (coords relative to frame):\n` + Object.entries(by).map(([c, xs]) => `${c}: ${xs.join(' ')}`).join('\n') };
+    }
+    case 'onion': {
+      const [fw, fh, i] = nums(fl.frame || '16,32,0');
+      return save(up(onion(loadImgFile(p[0]), fw, fh, i), +fl.scale || 8), fl.o || 'onion.png');
     }
     case 'read': {
       const img = loadImgFile(p[0]);
@@ -307,11 +365,13 @@ export async function px(argv, stdinText) {
       let img;
       if (/^new:/.test(p[0])) { const [w, h] = nums(p[0].slice(4)); img = newImg(w, h); } else img = loadImgFile(p[0]);
       const script = p.slice(1).join(' ') || stdinText || '';
-      return save(applyOps(img, script, { loadImg: loadImgFile }), fl.o || 'out.png');
+      const res = applyOps(img, script, { loadImg: loadImgFile, lockPal: lock });
+      const r = save(res, fl.o || 'out.png'); if (lock) r.text += `\nlock: ${res.snapped} px snapped`; return r;
     }
     case 'palette': {
       const img = loadImgFile(p[0]);
       const pal = palette(img, fl.rect ? nums(fl.rect) : null).slice(0, +fl.top || 32);
+      if (fl.line) return { text: pal.filter(([k]) => k !== 'transparent').map(([k]) => k).join(' ') };
       return { text: pal.map(([k, n]) => `${k} ${n}`).join('\n') };
     }
     case 'preview': {

@@ -4,17 +4,20 @@ import { newImg, cloneImg, blit, hex, toHex } from './raster.mjs';
 export const CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!$%&*+=?@^~<>/|:;_';
 
 /* PXT format (token-cheap, LLM-editable):
-   pxt 16x16            <- optional header
+   pxt 16x16            <- optional header (required when using layers)
    . transparent        <- palette: <char> <#rgb|#rrggbb|#rrggbbaa|transparent>
    k #222034
    --                   <- separator
    ....kkkk....         <- one row per line, one char per pixel; "4k" = kkkk (run-length, optional)
+   @layer hair 3 0      <- optional: start a layer named "hair" at offset x=3 y=0 (add "hidden" to skip)
+   .kkk.                   layer rows can be smaller than the canvas; '.' is transparent
 */
 export function parsePxt(src) {
   const lines = src.replace(/\r/g, '').split('\n');
-  const pal = { '.': [0, 0, 0, 0] }, rows = [];
-  let w = 0, h = 0, inRows = false;
-  for (let raw of lines) {
+  const pal = { '.': [0, 0, 0, 0] }, blocks = [];
+  let w = 0, h = 0, inRows = false, cur = null;
+  const block = (name, x = 0, y = 0, hidden = false) => { cur = { name, x, y, hidden, rows: [] }; blocks.push(cur); };
+  for (const raw of lines) {
     const l = raw.replace(/\s+#\s.*$/, '');
     if (!inRows) {
       if (!l.trim() || l.startsWith('//')) continue;
@@ -24,20 +27,61 @@ export function parsePxt(src) {
       if (p && p[1].length === 1 && /^(#|transparent)/.test(p[2])) { pal[p[1]] = hex(p[2]); continue; }
       inRows = true; // rows without separator
     }
-    if (!l.trim() && !rows.length) continue;
-    if (!l.trim()) continue;
-    rows.push(l.trim().replace(/(\d+)(\D)/g, (_, n, c) => c.repeat(+n)));
+    if (!l.trim() || l.startsWith('//')) continue;
+    const ly = /^@layer\s+(\S+)(?:\s+(-?\d+)\s+(-?\d+))?(\s+hidden)?/.exec(l.trim());
+    if (ly) { block(ly[1], +(ly[2] || 0), +(ly[3] || 0), !!ly[4]); continue; }
+    if (!cur) block('base');
+    cur.rows.push(l.trim().replace(/(\d+)(\D)/g, (_, n, c) => c.repeat(+n)));
   }
-  w = w || Math.max(...rows.map(r => r.length)); h = h || rows.length;
-  const im = newImg(w, h);
+  if (!blocks.length) block('base');
+  w = w || Math.max(1, ...blocks.map(b => b.x + Math.max(0, ...b.rows.map(r => r.length))));
+  h = h || Math.max(1, ...blocks.map(b => b.y + b.rows.length));
   const unknown = new Set();
-  rows.slice(0, h).forEach((r, y) => [...r].slice(0, w).forEach((c, x) => {
-    const col = pal[c]; if (!col) { unknown.add(c); return; }
-    im.data.set(col, (y * w + x) * 4);
-  }));
+  const layers = blocks.map(b => {
+    const lw = Math.max(1, ...b.rows.map(r => r.length)), img = newImg(lw, Math.max(1, b.rows.length));
+    b.rows.forEach((r, y) => [...r].forEach((c, x) => { const col = pal[c]; if (!col) { unknown.add(c); return; } img.data.set(col, (y * lw + x) * 4); }));
+    return { name: b.name, x: b.x, y: b.y, hidden: b.hidden, img };
+  });
+  const im = flatten(layers, w, h);
   if (unknown.size) im.warnings = [`unknown palette chars: ${[...unknown].join('')}`];
-  im.palette = pal;
+  im.palette = pal; im.layers = layers;
   return im;
+}
+
+// layers [{name,x,y,hidden,img}] -> one image (first layer = bottom)
+export function flatten(layers, w, h) {
+  const out = newImg(w, h);
+  for (const L of layers) if (!L.hidden) blit(out, L.img, 0, 0, L.img.width, L.img.height, L.x, L.y);
+  return out;
+}
+
+// bounding box of opaque pixels [x,y,w,h] or null
+export function bbox(im, rect) {
+  const [x0, y0, w, h] = rect || [0, 0, im.width, im.height];
+  let a = Infinity, b = Infinity, c = -1, d = -1;
+  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (im.data[(y * im.width + x) * 4 + 3]) { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); }
+  return c < 0 ? null : [a, b, c - a + 1, d - b + 1];
+}
+
+// layered PXT: shared palette, every layer cropped to its content (cheap to read & edit one part)
+export function toLayeredPxt(layers, w, h, opts = {}) {
+  const all = newImg(1, 1); const parts = [];
+  for (const L of layers) { const bb = bbox(L.img); parts.push({ L, bb }); }
+  // shared palette from all layers
+  const pal = new Map([['transparent', '.']]); let ci = 0;
+  for (const { L } of parts) for (const [k] of palette(L.img)) if (!pal.has(k)) { if (ci >= CHARS.length) throw new Error('too many colors'); pal.set(k, CHARS[ci++]); }
+  const out = [`pxt ${w}x${h}`, ...[...pal].map(([k, c]) => `${c} ${k}`), '--'];
+  for (const { L, bb } of parts) {
+    if (!bb) { out.push(`@layer ${L.name} 0 0${L.hidden ? ' hidden' : ''}`); continue; }
+    out.push(`@layer ${L.name} ${L.x + bb[0]} ${L.y + bb[1]}${L.hidden ? ' hidden' : ''}`);
+    for (let y = bb[1]; y < bb[1] + bb[3]; y++) {
+      let r = '';
+      for (let x = bb[0]; x < bb[0] + bb[2]; x++) { const i = (y * L.img.width + x) * 4, a = L.img.data[i + 3]; r += pal.get(a ? toHex(L.img.data[i], L.img.data[i + 1], L.img.data[i + 2], a) : 'transparent'); }
+      out.push(opts.rle ? r.replace(/(.)\1{2,}/g, (s, c) => s.length + c) : r);
+    }
+  }
+  void all;
+  return out.join('\n');
 }
 
 export function palette(im, rect) {
@@ -91,10 +135,11 @@ export const OPS_HELP = `ops (one per line or ';'-separated; colors: #hex, trans
 pal k #222034 | px x y c | line x1 y1 x2 y2 c | rect x y w h c | frect x y w h c | circle cx cy r c | fcircle cx cy r c
 fill x y c (flood) | replace c1 c2 | outline c [diag] | clear | canvas w h [ox oy] | crop x y w h | scale n
 flipx | flipy | rot (90 cw) | shift dx dy | mirror (left half -> right) | hue deg | sat f | light f | bright n
-quantize n | dither x y w h c1 c2 | paste file x y [sx sy w h] | frame fw fh i (select frame as canvas origin) | endframe`;
+quantize n | dither x y w h c1 c2 | paste file x y [sx sy w h] | frame fw fh i (select frame as canvas origin) | endframe
+copy sx sy w h dx dy | move sx sy w h dx dy | copyframe fw fh src dst [flipx] | remap c1,c2,.. d1,d2,.. | snap [c1,c2,..] (to locked palette)`;
 
 // apply ops script. loadImg(path) needed for 'paste'.
-export function applyOps(im, script, { loadImg } = {}) {
+export function applyOps(im, script, { loadImg, lockPal } = {}) {
   let img = cloneImg(im);
   const pal = { ...(im.palette || {}) };
   const C = (s) => (s && s.length === 1 && pal[s] ? pal[s] : hex(s));
@@ -137,13 +182,74 @@ export function applyOps(im, script, { loadImg } = {}) {
       case 'quantize': img = quantize(img, n[0]); break;
       case 'dither': { const [x, y, w, h] = n, c1 = C(a[4]), c2 = C(a[5]); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) P(x + i, y + j, (i + j) % 2 ? c2 : c1); break; }
       case 'paste': { if (!loadImg) throw new Error('paste needs a loader'); const s = loadImg(a[0]); const [x, y, sx = 0, sy = 0, w = s.width, h = s.height] = n.slice(1); blit(img, s, sx, sy, w, h, x + ox, y + oy); break; }
+      case 'copy': case 'move': { const [sx, sy, w, h, dx, dy] = n, src = cloneImg(img); if (op === 'move') for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) set(img, sx + i + ox, sy + j + oy, [0, 0, 0, 0]); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const c = get(src, sx + i + ox, sy + j + oy); if (c[3] || op === 'move') P(dx + i, dy + j, c); } break; }
+      case 'copyframe': { const [fw, fh, fa, fb] = n, flip = a[4] === 'flipx', cols = Math.floor(img.width / fw), src = cloneImg(img);
+        const ax = (fa % cols) * fw, ay = Math.floor(fa / cols) * fh, bx = (fb % cols) * fw, by = Math.floor(fb / cols) * fh;
+        for (let j = 0; j < fh; j++) for (let i = 0; i < fw; i++) set(img, bx + (flip ? fw - 1 - i : i), by + j, get(src, ax + i, ay + j)); break; }
+      case 'remap': { const from = a[0].split(',').map(C), to = a[1].split(',').map(C); for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) { const c = get(img, x, y); const k = from.findIndex(f => same(f, c)); if (k >= 0 && to[k]) set(img, x, y, to[k]); } break; }
+      case 'snap': { const cols = a.length ? a.join(' ').split(/[ ,]+/).map(C) : (lockPal || []); img = snapToPalette(img, cols).img; break; }
       case 'frame': { const [fw, fh, i] = n, cols = Math.floor(img.width / fw); ox = (i % cols) * fw; oy = Math.floor(i / cols) * fh; base = [fw, fh]; break; }
       case 'endframe': ox = oy = 0; base = null; break;
       default: throw new Error(`unknown op "${op}"\n${OPS_HELP}`);
     }
   }
+  if (lockPal) { const r = snapToPalette(img, lockPal); img = r.img; img.snapped = r.changed; }
   img.palette = pal;
   return img;
+}
+
+// snap every opaque pixel to the nearest palette color. returns {img, changed}
+export function snapToPalette(im, cols) {
+  const out = cloneImg(im); let changed = 0;
+  const P = cols.map(c => (Array.isArray(c) ? c : hex(c)));
+  for (let i = 0; i < out.data.length; i += 4) {
+    if (!out.data[i + 3]) continue;
+    let best = P[0], bd = Infinity;
+    for (const c of P) { const d = 2 * (c[0] - out.data[i]) ** 2 + 4 * (c[1] - out.data[i + 1]) ** 2 + 3 * (c[2] - out.data[i + 2]) ** 2; if (d < bd) { bd = d; best = c; } }
+    if (bd) { changed++; out.data[i] = best[0]; out.data[i + 1] = best[1]; out.data[i + 2] = best[2]; out.data[i + 3] = 255; }
+  }
+  return { img: out, changed };
+}
+
+// pixel-art shade ramp: darker shades shift hue toward blue/purple, lighter toward yellow (classic hue shifting)
+export function ramp(base, n = 5) {
+  const [r, g, b] = hex(base), [h, s, l] = rgb2hsl(r, g, b), mid = (n - 1) / 2, out = [];
+  const toward = (h0, target, deg) => { let d = ((target - h0 + 540) % 360) - 180; return (h0 + Math.sign(d) * Math.min(Math.abs(d), deg) + 360) % 360; };
+  for (let i = 0; i < n; i++) {
+    const t = mid ? (i - mid) / mid : 0; // -1 darkest .. +1 lightest
+    const hh = t < 0 ? toward(h * 360, 250, -t * 20) : toward(h * 360, 55, t * 14);
+    const ll = Math.max(0.05, Math.min(0.95, l + t * (t < 0 ? l * 0.6 : (1 - l) * 0.7)));
+    const ss = Math.max(0, Math.min(1, s + (t < 0 ? 0.06 : -0.12) * Math.abs(t)));
+    out.push(toHex(...hsl2rgb(hh / 360, ss, ll)));
+  }
+  return out;
+}
+
+// what changed between two frames (or two images): compact text for animation work
+export function frameDiff(A, ra, B, rb) {
+  const [ax, ay, w, h] = ra, [bx, by] = rb, ch = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = ((ay + y) * A.width + ax + x) * 4, j = ((by + y) * B.width + bx + x) * 4;
+    const ca = A.data.subarray(i, i + 4), cb = B.data.subarray(j, j + 4);
+    if (ca[3] === 0 && cb[3] === 0) continue;
+    if (ca[0] !== cb[0] || ca[1] !== cb[1] || ca[2] !== cb[2] || ca[3] !== cb[3]) ch.push([x, y, cb[3] ? toHex(cb[0], cb[1], cb[2], cb[3]) : 'transparent']);
+  }
+  return ch;
+}
+
+// onion skin view: frame i with frame i-1 (red tint) and i+1 (blue tint) faintly behind
+export function onion(im, fw, fh, i, alpha = 90) {
+  const cols = Math.floor(im.width / fw), out = newImg(fw, fh);
+  const frameAt = (k) => [(k % cols) * fw, Math.floor(k / cols) * fh];
+  const total = cols * Math.floor(im.height / fh);
+  for (const [k, tint] of [[i - 1, [255, 80, 80]], [i + 1, [80, 140, 255]]]) {
+    if (k < 0 || k >= total) continue;
+    const [sx, sy] = frameAt(k);
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) { const s = ((sy + y) * im.width + sx + x) * 4; if (im.data[s + 3]) { const o = (y * fw + x) * 4; out.data[o] = tint[0]; out.data[o + 1] = tint[1]; out.data[o + 2] = tint[2]; out.data[o + 3] = alpha; } }
+  }
+  const [sx, sy] = frameAt(i);
+  blit(out, im, sx, sy, fw, fh, 0, 0);
+  return out;
 }
 
 // median-cut-ish quantizer (simple popularity + nearest merge)

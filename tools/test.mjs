@@ -35,6 +35,14 @@ await t('px draw', () => P(`draw - -o ${tmp}/a.png --scale 4`, pxt), /wrote .*4x
 await t('px read', () => P(`read ${tmp}/a.png`), /abba/);
 await t('px ops', () => P(`ops ${tmp}/a.png -o ${tmp}/b.png`.split(' ').join(' ') + ' canvas 6 6 1 1; outline #000', ''), /6x6/);
 await t('px check', () => P('check web/data/img/extra/sprites.png --as npc'), /ok: \d+ frames of 16x32/);
+const lay = 'pxt 6x4\nk #222034\nr #e33\n--\n@layer a\nkkkk\n@layer b 2 1\nrr';
+await t('px layers', () => P('layers -', lay), /b @2,1 2x1/);
+await t('px draw layer', () => P(`draw - -o ${tmp}/l.png --hide b --lock #222034`, lay), /wrote .*6x4/);
+await t('px ramp', () => P('ramp #8e6fd1 3'), /^#\w{6} #8e6fd1 #\w{6}$/);
+await t('px diff', () => P('diff web/data/img/extra/sprites.png --frame 16,32,0,1'), /px differ/);
+await t('px pal', () => P('pal weapons --top 4'), /^#\w{6}( #\w{6}){3}$/);
+await t('px copyframe', () => P(`ops new:32x16 -o ${tmp}/cf.png px 0 0 #fff; copyframe 16 16 0 1 flipx`), /32x16/);
+await t('render place', () => S(`render Town --region 40,55,10,8 --place examples/amethyst_sword.png@45,60 -o ${tmp}/pl.png`), /160x128/);
 await t('px spec', () => P('spec npc'), /16x32/);
 
 // MCP handshake

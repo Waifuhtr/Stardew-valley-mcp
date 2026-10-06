@@ -58,10 +58,10 @@
   <div class="bar wrap">
     <select id="pxPreset">
       <option value="">Yeni…</option>
-      <option value="16x16">16×16 obje</option>
-      <option value="16x32">16×32 craftable</option>
-      <option value="64x128">64×128 NPC sayfası</option>
-      <option value="128x192">128×192 portre (6)</option>
+      <option value="object">16×16 obje/silah</option>
+      <option value="craftable">16×32 craftable</option>
+      <option value="npc">64×128 NPC sayfası</option>
+      <option value="portrait">128×192 portre</option>
       <option value="32x32">32×32</option>
       <option value="48x48">48×48</option>
     </select>
@@ -79,23 +79,53 @@
     <button data-t="pick" title="Renk seç">💧</button>
     <button data-t="line" title="Çizgi">／</button>
     <button data-t="rect" title="Dikdörtgen">▭</button>
+    <button data-t="select" title="Seç / taşı">⬚</button>
     <button data-t="pan" title="Kaydır">✋</button>
     <button id="pxMirror" title="Yatay ayna">⇋</button>
     <button id="pxUndo">↶</button><button id="pxRedo">↷</button>
+    <span id="pxSelOps" hidden><button id="pxCopy" title="Kopyala">⧉ kopyala</button><button id="pxPaste" title="Yapıştır">📋 yapıştır</button><button id="pxFlipSel" title="Seçimi çevir">↔</button><button id="pxDelSel" title="Sil">🗑</button></span>
+  </div>
+  <div class="bar wrap">
     <input type="color" id="pxColor" value="#3b2a4a">
+    <button id="pxRamp" title="Seçili renkten gölge rampası">ramp</button>
+    <select id="pxLock" title="Palet kilidi">
+      <option value="">kilit yok</option>
+      <option value="@self">kilit: bu görsel</option>
+      <option value="TileSheets/weapons">kilit: weapons</option>
+      <option value="Maps/springobjects">kilit: objeler</option>
+      <option value="TileSheets/Craftables">kilit: craftables</option>
+      <option value="TileSheets/furniture">kilit: mobilya</option>
+      <option value="Maps/spring_town">kilit: kasaba</option>
+      <option value="Maps/townInterior">kilit: iç mekân</option>
+      <option value="extra/sprites">kilit: örnek NPC</option>
+    </select>
     <span id="pxPal"></span>
   </div>
   <div class="bar wrap">
+    <select id="pxLayer" title="Aktif katman"></select>
+    <button id="pxLAdd" title="Katman ekle">+katman</button>
+    <button id="pxLDel" title="Katmanı sil">−</button>
+    <button id="pxLVis" title="Göster/gizle">👁</button>
+    <button id="pxLUp" title="Yukarı taşı">⇡</button>
+    <button id="pxLMerge" title="Alttakiyle birleştir">⤓birleştir</button>
+    <label><input type="checkbox" id="pxOnion"> onion</label>
+  </div>
+  <div class="bar wrap">
+    <select id="pxKind" title="Stardew türü (ızgara, etiket, kontrol)">
+      <option value="npc">NPC</option><option value="portrait">portre</option><option value="object">obje</option><option value="craftable">craftable</option>
+      <option value="crop">ekin</option><option value="furniture">mobilya</option><option value="tile">tile</option><option value="building">bina</option><option value="emote">emote</option>
+    </select>
     <label>Kare <input id="pxFW" type="number" value="16" min="1">×<input id="pxFH" type="number" value="32" min="1"></label>
     <label><input type="checkbox" id="pxGrid" checked> ızgara</label>
     <label>Anim <input id="pxFrames" value="0,1,2,3" size="8"></label>
     <label>fps <input id="pxFps" type="number" value="6" min="1" max="30"></label>
     <canvas id="pxAnim" width="64" height="64"></canvas>
   </div>
+  <div id="pxCheck"></div>
   <div id="pxStage"><canvas id="pxCv"></canvas></div>
   <details id="pxTextBox"><summary>PXT metin (AI formatı) — içe/dışa aktar</summary>
-    <textarea id="pxText" spellcheck="false" placeholder="pxt 16x16&#10;. transparent&#10;k #222034&#10;--&#10;....kkkk...."></textarea>
-    <div class="row"><button id="pxToText">Seçili kare → PXT</button><button id="pxAllText">Tümü → PXT</button><button id="pxFromText">PXT → tuval</button><label>x<input id="pxTX" type="number" value="0"></label><label>y<input id="pxTY" type="number" value="0"></label></div>
+    <textarea id="pxText" spellcheck="false" placeholder="pxt 16x16&#10;. transparent&#10;k #222034&#10;--&#10;....kkkk....&#10;@layer sac 2 0&#10;.kk."></textarea>
+    <div class="row"><button id="pxToText">Seçili kare → PXT</button><button id="pxAllText">Tümü (katmanlı) → PXT</button><button id="pxFromText">PXT → tuval</button><button id="pxAsLayer">PXT → yeni katman</button><label>x<input id="pxTX" type="number" value="0"></label><label>y<input id="pxTY" type="number" value="0"></label></div>
   </details>
 </section>
 
