@@ -1,0 +1,95 @@
+{
+ "Locations": {
+  "BeachCabin": {
+   "Wallpaper": "104",
+   "Floor": "18",
+   "Furniture": [
+    {
+     "Id": "2626",
+     "X": 1,
+     "Y": 1,
+     "Rotation": 0
+    },
+    {
+     "Id": "1673",
+     "X": 3,
+     "Y": 1,
+     "Rotation": 0
+    },
+    {
+     "Id": "1547",
+     "X": 5,
+     "Y": 1,
+     "Rotation": 0
+    },
+    {
+     "Id": "1673",
+     "X": 9,
+     "Y": 1,
+     "Rotation": 0
+    },
+    {
+     "Id": "HangingFish",
+     "X": 10,
+     "Y": 1,
+     "Rotation": 0
+    },
+    {
+     "Id": "2176",
+     "X": 9,
+     "Y": 4,
+     "Rotation": 0
+    },
+    {
+     "Id": "985",
+     "X": 8,
+     "Y": 4,
+     "Rotation": 0
+    },
+    {
+     "Id": "1751",
+     "X": 1,
+     "Y": 4,
+     "Rotation": 0
+    },
+    {
+     "Id": "1216",
+     "X": 2,
+     "Y": 6,
+     "Rotation": 0
+    },
+    {
+     "Id": "134",
+     "X": 1,
+     "Y": 6,
+     "Rotation": 1
+    },
+    {
+     "Id": "134",
+     "X": 4,
+     "Y": 6,
+     "Rotation": 3
+    },
+    {
+     "Id": "1737",
+     "X": 5,
+     "Y": 6,
+     "Rotation": 0
+    },
+    {
+     "Id": "1294",
+     "X": 1,
+     "Y": 9,
+     "Rotation": 0
+    },
+    {
+     "Id": "1376",
+     "X": 10,
+     "Y": 9,
+     "Rotation": 0
+    }
+   ]
+  }
+ },
+ "Actions": {}
+}

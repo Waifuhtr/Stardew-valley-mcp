@@ -43,7 +43,7 @@ export class GameMap {
       if (!('Passable' in p) && !('Shadow' in p)) return 2;
     }
     if (bp.Water !== undefined && bp.Water !== 'F') return 3;
-    if ('Passable' in bp) return 2;
+    if (bp.Passable !== undefined && /^(f|0)/i.test(String(bp.Passable))) return 2;
     if (bp.NPCBarrier) return 1;
     return 1;
   }

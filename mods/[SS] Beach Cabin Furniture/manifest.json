@@ -1,0 +1,11 @@
+{
+  "Name": "[SS] Beach Cabin Furniture",
+  "Author": "Stardew Sim",
+  "Version": "1.0.0",
+  "Description": "Real furniture layout for BeachCabin",
+  "UniqueID": "StardewSim.beachcabin",
+  "ContentPackFor": {
+    "UniqueID": "Waifuhtr.StardewSim"
+  },
+  "Dependencies": []
+}

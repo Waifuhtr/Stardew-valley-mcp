@@ -238,16 +238,20 @@ fs.writeFileSync(path.join(MOD, 'manifest.json'), JSON.stringify({
   UniqueID: 'Waifuhtr.BeachCabin', UpdateKeys: [], ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' },
 }, null, 2));
 // bake real furniture + wallpaper/floor (from mod.json) into the CP interior; seats via Data/ChairTiles
-const { bakeLocation } = await import('../../cli/commands.mjs');
+const { bakeLocation, loadMap: simMap, sdv } = await import('../../cli/commands.mjs');
 const baked = bakeLocation(INSIDE.name, 'z_beach_cabin_furniture');
+// "bare" room (wallpaper/floor only) used when the Stardew Sim Bridge SMAPI mod places real furniture objects
+fs.writeFileSync(path.join(MOD, 'assets/BeachCabin_Bare.tmx'), mapToTmx(new GameMap(simMap(INSIDE.name).j)));
+await sdv(['ss-export', 'beach-cabin', '-o', path.join(ROOT, 'mods'), '--name', '[SS] Beach Cabin Furniture']);
 fs.writeFileSync(path.join(MOD, 'assets/BeachCabin.tmx'), mapToTmx(baked.map).replace(/source="(z_beach_cabin_interior)\.png"/, 'source="beach_cabin_interior.png"'));
 writePNG(path.join(MOD, 'assets/z_beach_cabin_furniture.png'), baked.sheet);
 fs.writeFileSync(path.join(MOD, 'content.json'), JSON.stringify({
   Format: '2.0.0',
   Changes: [
-    { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin.tmx' },
+    { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin.tmx', When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
+    { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin_Bare.tmx', When: { HasMod: 'Waifuhtr.StardewSim' } },
     { Action: 'EditData', Target: 'Data/Locations', Entries: { [INSIDE.name]: { DisplayName: 'Beach Cabin', DefaultArrivalTile: { X: INSIDE.arrive[0], Y: INSIDE.arrive[1] }, CreateOnLoad: { MapPath: `Maps/${INSIDE.name}` } } } },
-    { Action: 'EditData', Target: 'Data/ChairTiles', Entries: baked.chairTiles },
+    { Action: 'EditData', Target: 'Data/ChairTiles', Entries: baked.chairTiles, When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
     { Action: 'EditMap', Target: 'Maps/Beach', FromFile: 'assets/BeachCabin_Exterior.tmx', ToArea: { X: PLACE.x, Y: PLACE.y, Width: PLACE.w, Height: PLACE.h }, PatchMode: 'ReplaceByLayer' },
   ],
 }, null, 2));

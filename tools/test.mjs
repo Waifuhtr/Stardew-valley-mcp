@@ -52,6 +52,9 @@ await t('map seats', () => S('seats Town'), /map bench/);
 await t('sit', () => S(`sit BeachCabin 4 6 -o ${tmp}/sit.png`), /facing left/);
 await t('decorate', () => S('decorate BeachCabin --wallpaper 3 --floor 2'), /30 wall tiles, \d+ floor tiles/);
 await t('bake', () => S(`bake BeachCabin -o ${tmp}/bake`), /seats/);
+await t('state bridge', () => S('go Town 54 100 BeachBakery'), /arrive BeachBakery/);
+await t('passable T', () => S('tile Beach 58 13'), /walkable=true/);
+await t('cp-export', () => S(`cp-export beach-cafe -o ${tmp}/dist`), /\[SS\] Beach Bakery: BeachBakery \d+ furniture/);
 await t('px spec', () => P('spec npc'), /16x32/);
 
 // MCP handshake

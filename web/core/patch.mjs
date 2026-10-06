@@ -66,3 +66,20 @@ export function applyDecor(map, decor, textures = {}) {
   const out = new GameMap(j); out.decorStats = { walls, floors };
   return out;
 }
+
+// World states the game applies in code (not via map files). Applied when a loaded mod lists them in "states".
+export const WORLD_STATES = {
+  // Beach.fixBridge(): planks on 58-61,13 (Back 301) and the broken ends removed — east beach becomes reachable
+  beachBridgeFixed: { map: 'Beach', sheet: 'untitled tile sheet', edits: [['Back', 58, 13, 301], ['Back', 59, 13, 301], ['Back', 60, 13, 301], ['Back', 61, 13, 301], ['Buildings', 58, 13, null], ['Buildings', 61, 13, null]] },
+};
+export function applyStates(map, states = []) {
+  const todo = states.map(s => WORLD_STATES[s]).filter(s => s && s.map === map.name);
+  if (!todo.length) return map;
+  const layers = Object.fromEntries(map.layerOrder.map(id => [id, new Uint16Array(map.layers[id])]));
+  const tp = structuredClone(map.tp);
+  for (const st of todo) {
+    const sh = map.sheets.find(s => s.id === st.sheet) || map.sheets[0];
+    for (const [L, x, y, idx] of st.edits) { layers[L][y * map.w + x] = idx == null ? 0 : sh.first + idx; if (tp[L]) delete tp[L][`${x},${y}`]; }
+  }
+  return new GameMap({ name: map.name, w: map.w, h: map.h, props: map.props, sheets: map.sheets, anim: map.anim, tp, layers: map.layerOrder.map(id => ({ id, vis: true, arr: layers[id] })) });
+}

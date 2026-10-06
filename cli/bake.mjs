@@ -3,10 +3,10 @@
 //  seat "front" sprites -> Front2. Overlaps are composited, identical tiles deduped into one tilesheet PNG.
 //  Seats become Data/ChairTiles entries (the vanilla mechanism used by map benches), lamps become Light map properties.
 import { GameMap } from '../web/core/map.mjs';
-import { layout, drawPos, seats as furnSeats, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
+import { layout, drawPos, seats as furnSeats, skinSource, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { newImg, blit } from '../web/core/raster.mjs';
 
-export function bakeFurniture(map, catalog, getImg, sheetName) {
+export function bakeFurniture(map, catalog, getImg, sheetName, { skins, textures } = {}) {
   const cells = new Map(); // "layer|x|y" -> 16x16 img
   const cell = (L, x, y) => { const k = `${L}|${x}|${y}`; if (!cells.has(k)) cells.set(k, newImg(16, 16)); return cells.get(k); };
   const items = (map.furniture || []).map(pl => ({ pl, f: catalog[pl.id] })).filter(o => o.f)
@@ -23,7 +23,10 @@ export function bakeFurniture(map, catalog, getImg, sheetName) {
     }
   };
   for (const { pl, f, lay } of items) {
-    const tex = getImg(f.tex); if (!tex) continue;
+    let tex = getImg(f.tex);
+    const sk = skinSource(f, lay, pl.skin, skins, textures);
+    if (sk && getImg(sk.key)) { tex = getImg(sk.key); lay.src = sk.src; }
+    if (!tex) continue;
     const pos = drawPos(pl, lay);
     if (f.t === 'rug') stamp(tex, lay, pos, () => 'Back2');
     else if (WALL_TYPES.has(f.t)) stamp(tex, lay, pos, () => 'Buildings2');

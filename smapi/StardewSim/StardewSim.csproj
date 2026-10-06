@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Built against the Android SMAPI 4.3.x / Stardew 1.6.15 assemblies (.NET 9). Set SdvLibs to a folder with them. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>StardewSim</AssemblyName>
+    <RootNamespace>StardewSim</RootNamespace>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SdvLibs Condition="'$(SdvLibs)' == ''">$(HOME)/sdv-libs</SdvLibs>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="StardewModdingAPI"><HintPath>$(SdvLibs)/StardewModdingAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="StardewValley"><HintPath>$(SdvLibs)/StardewValley.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="StardewValley.GameData"><HintPath>$(SdvLibs)/StardewValley.GameData.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MonoGame.Framework"><HintPath>$(SdvLibs)/MonoGame.Framework.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="xTile"><HintPath>$(SdvLibs)/xTile.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="SMAPI.Toolkit.CoreInterfaces"><HintPath>$(SdvLibs)/SMAPI.Toolkit.CoreInterfaces.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

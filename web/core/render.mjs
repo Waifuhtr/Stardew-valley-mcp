@@ -1,6 +1,6 @@
 // Software map renderer (Node / headless). The browser uses canvas but follows the same rules.
 import { newImg, blit, fillRect, text } from './raster.mjs';
-import { layout, drawPos, SEAT_TYPES } from './furniture.mjs';
+import { layout, drawPos, SEAT_TYPES, skinSource } from './furniture.mjs';
 
 export const SEASONS = ['spring', 'summer', 'fall', 'winter'];
 
@@ -50,7 +50,10 @@ export function renderMap(map, opts) {
     const cat = opts.catalog || {}, objs = [], fronts = [];
     for (const pl of opts.furniture || []) {
       const f = cat[pl.id]; if (!f) continue;
-      const lay = layout(f, pl.rot || 0), tex = opts.getImg(f.tex); if (!tex) continue;
+      let lay = layout(f, pl.rot || 0), tex = opts.getImg(f.tex);
+      const sk = skinSource(f, lay, pl.skin, opts.skins, opts.textures);
+      if (sk && opts.getImg(sk.key)) { tex = opts.getImg(sk.key); lay = { ...lay, src: sk.src }; }
+      if (!tex) continue;
       const pos = drawPos(pl, lay), item = { kind: 'f', f, lay, tex, pos, z: f.t === 'rug' ? -1e9 : pl.y + lay.bh };
       objs.push(item);
       if (SEAT_TYPES.has(f.t)) { const ft = opts.getImg(f.tex + 'Front'); if (ft) fronts.push({ ...item, tex: ft }); }

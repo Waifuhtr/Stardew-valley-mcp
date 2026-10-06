@@ -3,3 +3,7 @@ uploads/
 *.log
 /out/
 .playwright-mcp/
+# third-party content packs imported locally (redistribution needs the authors' permission)
+web/data/thirdparty/
+web/data/img/thirdparty/
+dist/

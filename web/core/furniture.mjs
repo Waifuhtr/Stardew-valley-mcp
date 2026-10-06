@@ -49,7 +49,7 @@ export function layout(f, rot = 0, texW = 512) {
       src = { x: d.x + k * d.w, y: d.y, w: d.w, h: d.h };
     }
   }
-  return { rot, src, flip, bw, bh };
+  return { rot, src, flip, bw, bh, base: d };
 }
 
 // where a placed piece is drawn (px, top-left) — sprite bottom sits on the bounding box bottom
@@ -156,4 +156,17 @@ export function resolveDecor(spec, kind, extra = []) {
   if (!e) throw new Error(`unknown set ${set}`);
   if (e.IsFlooring !== (kind === 'floor')) throw new Error(`${set} is not a ${kind} set`);
   return { tex: e.Texture, n: +num, startRow: 0, max: e.Count };
+}
+
+// Alternative Textures skins: skins[itemId or English name] -> [{mod,w,h,files[],single,variations[]}]
+export function skinsFor(f, skins = {}) { return [...(skins[f.id] || []), ...(f.n && skins[f.n] || [])]; }
+// placement.skin = "<modId>:<variation>" -> {key (texture), src} or null
+export function skinSource(f, lay, spec, skins, textures = {}) {
+  if (!spec) return null;
+  const [mod, vs] = String(spec).split(/:(?=[^:]*$)/), v = +vs;
+  const s = skinsFor(f, skins).find(x => x.mod === mod); if (!s) return null;
+  let key, cx = 0, cy = 0;
+  if (s.single) { key = s.files[0]; const W = (textures[key] || [s.w])[0], cols = Math.max(1, Math.floor(W / s.w)); cx = (v % cols) * s.w; cy = Math.floor(v / cols) * s.h; }
+  else { key = s.files[Math.min(v, s.files.length - 1)]; }
+  return { key, src: { x: cx + lay.src.x - lay.base.x, y: cy + lay.src.y - lay.base.y, w: lay.src.w, h: lay.src.h } };
 }

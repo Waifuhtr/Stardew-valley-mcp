@@ -1,0 +1,204 @@
+{
+ "id": "beach-cafe",
+ "title": "Beach Bakery",
+ "states": [
+  "beachBridgeFixed"
+ ],
+ "locations": {
+  "BeachBakery": "mods/beach-cafe/BeachBakery.json"
+ },
+ "patches": [
+  {
+   "target": "Beach",
+   "file": "mods/beach-cafe/BeachBakery_Exterior.json",
+   "x": 66,
+   "y": 3
+  }
+ ],
+ "decor": {
+  "BeachBakery": {
+   "wallpaper": "99",
+   "floor": "22"
+  }
+ },
+ "furniture": {
+  "BeachBakery": [
+   {
+    "id": "VintageIndustrialDecor_WallClock1",
+    "x": 2,
+    "y": 1,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_LongMenu",
+    "x": 8,
+    "y": 1,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_SmallShelf_a",
+    "x": 13,
+    "y": 1,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_Oven",
+    "x": 1,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_Sink",
+    "x": 2,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_Fridge",
+    "x": 3,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_BagsOfFlour",
+    "x": 4,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_Display_a",
+    "x": 5,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_SmallDisplay_a",
+    "x": 11,
+    "y": 4,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_a",
+    "x": 4,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_b",
+    "x": 5,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_b",
+    "x": 6,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_b",
+    "x": 7,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCashier",
+    "x": 8,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_b",
+    "x": 9,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_CreamWoodCounter_c",
+    "x": 10,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "KatyDTK.BakingLoversDecor_BasketOfBaguettes",
+    "x": 12,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "VintageIndustrialDecor_RoundTable",
+    "x": 2,
+    "y": 9,
+    "rot": 0
+   },
+   {
+    "id": "VintageIndustrialDecor_Chair",
+    "x": 1,
+    "y": 9,
+    "rot": 1
+   },
+   {
+    "id": "VintageIndustrialDecor_Chair",
+    "x": 4,
+    "y": 9,
+    "rot": 3
+   },
+   {
+    "id": "VintageIndustrialDecor_RoundTable",
+    "x": 11,
+    "y": 9,
+    "rot": 0
+   },
+   {
+    "id": "VintageIndustrialDecor_Chair",
+    "x": 10,
+    "y": 9,
+    "rot": 1
+   },
+   {
+    "id": "VintageIndustrialDecor_Chair",
+    "x": 13,
+    "y": 9,
+    "rot": 3
+   },
+   {
+    "id": "SoftBohoDecor_BohoLysRug",
+    "x": 7,
+    "y": 8,
+    "rot": 0
+   },
+   {
+    "id": "CreamyCozyDecor_PendantLight1",
+    "x": 14,
+    "y": 7,
+    "rot": 0
+   },
+   {
+    "id": "CreamyCozyDecor_PendantLight1",
+    "x": 1,
+    "y": 7,
+    "rot": 0
+   },
+   {
+    "id": "SoftBohoDecor_BohoRoundVase",
+    "x": 1,
+    "y": 11,
+    "rot": 0
+   },
+   {
+    "id": "SoftBohoDecor_BohoLargeVase",
+    "x": 14,
+    "y": 11,
+    "rot": 0
+   }
+  ]
+ },
+ "actions": {
+  "KatyDTK.BakingLoversDecor_Fridge": [
+   "kitchen"
+  ]
+ },
+ "names": {
+  "BeachBakery": "Beach Bakery"
+ }
+}

@@ -105,6 +105,32 @@ boxes and seats follow the game's own rules (Furniture.updateRotation / GetSeatP
   `EditData Data/ChairTiles`, the mechanism vanilla benches use; lamps/windows add `Light`). Beds baked this way
   are decoration only (no sleeping) — that needs real Furniture objects (SMAPI mod).
 
+## New buildings, interiors and shipping them
+
+- `sdv room <Name> <w> <h> --exit Map,x,y --mod id` → new interior (w×h floor, 3-tile walls, frame, bottom exit).
+- `sdv building <map> x y --texture "Buildings/Beach Cabin" --rect 160,0,80,112 --door 2,5 --to <Name> --mod id`
+  → exterior from any game texture (roof rows on Front, rest Buildings, mat in front of the door walkable), door warp,
+  and the room's exit is pointed back at the door. Check the spot first with `SDV_VANILLA=1 sdv fit ...`.
+- `sdv state beachBridgeFixed --mod id` when the place needs progress the game applies in code (east beach bridge).
+- `sdv furni act <id> kitchen --mod id` only for furniture that should do something (fridge/oven → kitchen,
+  calendar → Billboard, jukebox → Jukebox). Seats, beds, lamps, dressers, fish tanks work natively by type.
+- `sdv cp-export <mod> -o dist` → `[CP] <title>` (Content Patcher: locations, Data/Locations, EditMap, baked furniture
+  + Data/ChairTiles as fallback) and `[SS] <title>` (layout for the SMAPI bridge: real Furniture objects).
+  `sdv ss-import exports/<loc>.json --mod save` brings a real in-game room (exported by the bridge on save) into the simulator.
+
+## Stardew Sim Bridge (SMAPI, `smapi/StardewSim`, Android SMAPI 4.3 / game 1.6.15, .NET 9, no Harmony)
+
+Places `[SS]` layouts as real furniture once per save (player may move/remove them), applies wallpaper/floor in
+decoratable locations, performs furniture tile actions when Calcifer isn't installed, exports the current room + home
+to `exports/*.json` on save. Build: `node tools/build-smapi.mjs` (needs .NET 9 SDK + game DLLs in ~/sdv-libs).
+
+## Third-party decor packs
+
+`node tools/import-mods.mjs <folder of mod folders>` imports CP furniture packs (Data/Furniture, textures, i18n,
+Calcifer/MMAP/SpaceCore extras) and Alternative Textures packs (skins: `furni skins <id>`, `place --skin pack:n`;
+AT wallpapers become `decorate --wallpaper AT.<pack>:n`). Output stays local (`web/data/thirdparty`, gitignored —
+redistribution needs the authors' permission). `furni mods` lists what's imported; modded items show `[modId]`.
+
 ## Mods in the simulator
 
 `web/data/mods/<id>/mod.json` lists new locations and EditMap patches; CLI, MCP and web load them on top of vanilla

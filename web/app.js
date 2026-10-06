@@ -3,8 +3,8 @@ import { mapOf, route, isVariant, mapWarps } from './core/world.mjs';
 import { seasonImg, DIRS } from './core/render.mjs';
 import { tmxToJson, mapToTmx } from './core/tmx.mjs';
 import { checkMap, connectivityDiff, checkFootprint } from './core/check.mjs';
-import { applyPatch, newProblems, applyDecor } from './core/patch.mjs';
-import { layout, drawPos, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, SEAT_TYPES, WALL_TYPES } from './core/furniture.mjs';
+import { applyPatch, newProblems, applyDecor, applyStates, WORLD_STATES } from './core/patch.mjs';
+import { layout, drawPos, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, skinSource, SEAT_TYPES, WALL_TYPES } from './core/furniture.mjs';
 import { initPixel } from './pixel.js';
 
 const $ = (s) => document.querySelector(s);
@@ -41,7 +41,7 @@ async function getMap(name) {
   if (S.overrides[name]) return S.overrides[name];
   const j = S.customMaps[name] || await (await fetch(`data/maps/${name}.json`)).json();
   const m = new GameMap(j);
-  let out = m;
+  let out = applyStates(m, S.states || []);
   for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y);
   const dec = { ...(S.modDecor[name] || {}), ...(S.userDecor[name] || {}) };
   if (S.furn && (dec.wallpaper != null || dec.floor != null)) out = applyDecor(out, { wallpaper: dec.wallpaper != null ? resolveDecor(dec.wallpaper, 'wallpaper', S.furn.wallpaper) : null, floor: dec.floor != null ? resolveDecor(dec.floor, 'floor', S.furn.flooring) : null }, S.index.textures);
@@ -58,7 +58,7 @@ function setFurn(m) {
 }
 async function prepFurnImgs(m) {
   const out = {};
-  for (const pl of m.furniture || []) { const f = S.furn.items[pl.id]; if (!f) continue; out[f.tex] ||= await loadImage(f.tex); if (SEAT_TYPES.has(f.t)) out[f.tex + 'Front'] ||= await loadImage(f.tex + 'Front'); }
+  for (const o of furnItems(m)) { out[o.tex] ||= await loadImage(o.tex); out[o.f.tex] ||= await loadImage(o.f.tex); if (SEAT_TYPES.has(o.f.t)) out[o.f.tex + 'Front'] ||= await loadImage(o.f.tex + 'Front'); }
   S.furnImgs = out;
 }
 const known = (name) => !!S.index.maps[mapOf(name, S.index.maps)];
@@ -242,10 +242,12 @@ function draw(t) {
   if (S.sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1 / S.zoom; ctx.strokeRect(S.sel[0] * 16 + .5, S.sel[1] * 16 + .5, 15, 15); }
 }
 function furnItems(m) {
-  return (m.furniture || []).map(pl => { const f = S.furn?.items[pl.id]; if (!f) return null; const lay = layout(f, pl.rot || 0); return { pl, f, lay, pos: drawPos(pl, lay), z: f.t === 'rug' ? -1e9 : pl.y + lay.bh }; }).filter(Boolean);
+  return (m.furniture || []).map(pl => { const f = S.furn?.items[pl.id]; if (!f) return null; let lay = layout(f, pl.rot || 0), tex = f.tex;
+    const sk = skinSource(f, lay, pl.skin, S.furn.skins, S.index.textures); if (sk) { lay = { ...lay, src: sk.src }; tex = sk.key; }
+    return { pl, f, lay, tex, pos: drawPos(pl, lay), z: f.t === 'rug' ? -1e9 : pl.y + lay.bh }; }).filter(Boolean);
 }
 function drawFurn(o, tex) {
-  const im = S.furnImgs?.[tex || o.f.tex]; if (!im) return;
+  const im = S.furnImgs?.[tex || o.tex || o.f.tex]; if (!im) return;
   const { src, flip } = o.lay;
   if (flip) { ctx.save(); ctx.translate(o.pos.x + src.w, o.pos.y); ctx.scale(-1, 1); ctx.drawImage(im, src.x, src.y, src.w, src.h, 0, 0, src.w, src.h); ctx.restore(); }
   else ctx.drawImage(im, src.x, src.y, src.w, src.h, o.pos.x, o.pos.y, src.w, src.h);
@@ -524,8 +526,9 @@ async function loadMods() {
     for (const p of m.patches || []) (S.modPatches[p.target] ||= []).push({ ...p, json: await (await fetch('data/' + p.file)).json() });
     for (const [mp, list] of Object.entries(m.furniture || {})) (S.modFurn[mp] ||= []).push(...list);
     for (const [mp, d] of Object.entries(m.decor || {})) S.modDecor[mp] = d;
+    for (const st of m.states || []) (S.states ||= []).includes(st) || S.states.push(st);
   }
-  for (const t of Object.keys(S.modPatches)) { const mm = await getMap(t); S.index.maps[t].warps = mm.warps; }
+  for (const t of new Set([...Object.keys(S.modPatches), ...(S.states || []).map(st => WORLD_STATES[st]?.map).filter(Boolean)])) { const mm = await getMap(t); S.index.maps[t].warps = mm.warps; }
   if (S.mods.length) status('modlar: ' + S.mods.map(m => m.title).join(', '));
 }
 
@@ -533,7 +536,12 @@ async function loadMods() {
 (async () => {
   resize();
   S.index = await (await fetch('data/index.json')).json();
+  S.index.textures['stardewsim/room_kit'] = [128, 96];
   try { S.furn = await (await fetch('data/furniture.json')).json(); } catch { S.furn = null; }
+  try { // locally imported third-party packs (tools/import-mods.mjs; not published)
+    const t = await (await fetch('data/thirdparty/furniture.json')).json();
+    Object.assign(S.furn.items, t.items); S.furn.wallpaper.push(...t.wallpaper); S.furn.flooring.push(...t.flooring); S.furn.skins = t.skins; Object.assign(S.index.textures, t.textures);
+  } catch {}
   await loadMods();
   initFurnUI();
   fillList();

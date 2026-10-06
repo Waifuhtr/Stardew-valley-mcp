@@ -4,7 +4,18 @@
     {
       "Action": "Load",
       "Target": "Maps/BeachCabin",
-      "FromFile": "assets/BeachCabin.tmx"
+      "FromFile": "assets/BeachCabin.tmx",
+      "When": {
+        "HasMod |contains=Waifuhtr.StardewSim": false
+      }
+    },
+    {
+      "Action": "Load",
+      "Target": "Maps/BeachCabin",
+      "FromFile": "assets/BeachCabin_Bare.tmx",
+      "When": {
+        "HasMod": "Waifuhtr.StardewSim"
+      }
     },
     {
       "Action": "EditData",
@@ -30,6 +41,9 @@
         "z_beach_cabin_furniture.png/7/2": "1/1/right/chair/-1/-1/false",
         "z_beach_cabin_furniture/9/2": "1/1/left/chair/-1/-1/false",
         "z_beach_cabin_furniture.png/9/2": "1/1/left/chair/-1/-1/false"
+      },
+      "When": {
+        "HasMod |contains=Waifuhtr.StardewSim": false
       }
     },
     {
