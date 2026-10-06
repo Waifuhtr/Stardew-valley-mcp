@@ -31,6 +31,9 @@ namespace StardewSim
 
     public class LayoutFile
     {
+        /// <summary>Decor packs the layout's furniture comes from. If any is missing the layout is skipped
+        /// (the Content Patcher side then shows its baked copy instead, so nothing is placed twice).</summary>
+        public List<string> RequiresMods { get; set; } = new();
         public Dictionary<string, LocationLayout> Locations { get; set; } = new();
         /// <summary>Furniture item id -> tile actions (e.g. "kitchen", "Billboard", "Jukebox").</summary>
         public Dictionary<string, List<string>> Actions { get; set; } = new();
@@ -57,6 +60,12 @@ namespace StardewSim
             {
                 LayoutFile file = pack.ReadJsonFile<LayoutFile>("layout.json");
                 if (file == null) { this.Monitor.Log($"{pack.Manifest.Name}: no layout.json", LogLevel.Warn); continue; }
+                List<string> missing = file.RequiresMods.Where(id => !helper.ModRegistry.IsLoaded(id)).ToList();
+                if (missing.Count > 0)
+                {
+                    this.Monitor.Log($"{pack.Manifest.Name}: skipped, needs {string.Join(", ", missing)} (the location still shows its baked furniture).", LogLevel.Info);
+                    continue;
+                }
                 this.Layouts.Add((pack.Manifest.UniqueID, file));
                 this.Monitor.Log($"Loaded layout from {pack.Manifest.Name}: {file.Locations.Count} locations, {file.Actions.Count} actions.", LogLevel.Info);
             }

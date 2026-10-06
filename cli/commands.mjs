@@ -511,17 +511,21 @@ export async function sdv(argv) {
       const m = JSON.parse(fs.readFileSync(mf, 'utf8')), title = m.title || id, uid = `StardewSim.${id.replace(/[^\w]/g, '')}`;
       const dir = path.join(fl.o || 'dist', `[CP] ${title}`), A = path.join(dir, 'assets'); fs.mkdirSync(A, { recursive: true });
       const changes = [], chairs = {}, images = new Set(), notes = [];
+      const deps = [...new Set(Object.values(m.furniture || {}).flat().map(pl => furnData().items[pl.id]?.mod).filter(Boolean))];
+      // real furniture only when the bridge AND every decor pack are installed; otherwise the baked copy (art + seats) is used
+      const useBridge = { Name: 'UseBridge', Value: 'true', When: Object.fromEntries(['Waifuhtr.StardewSim', ...deps].map(u => [`HasMod |contains=${u}`, true])) };
+      const BRIDGE = { UseBridge: true }, BAKED = { UseBridge: false };
       const writeTmx = (map, file) => { fs.writeFileSync(path.join(A, file), mapToTmx(map)); for (const s of map.sheets) if (!/^Maps\//.test(s.img) && !s.missing) images.add(s.img); };
       for (const name of Object.keys(m.locations || {})) {
         const lm = loadMap(name), bare = new GameMap(lm.j), baked = bakeLocation(name);
         writeTmx(bare, `${name}_Bare.tmx`); writeTmx(baked.map, `${name}.tmx`); writePNG(path.join(A, baked.sheetName + '.png'), baked.sheet);
         Object.assign(chairs, baked.chairTiles);
         const arr = String(lm.props.StardewSimArrival || '0 0').split(' ').map(Number);
-        changes.push({ Action: 'Load', Target: `Maps/${name}`, FromFile: `assets/${name}.tmx`, When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
-          { Action: 'Load', Target: `Maps/${name}`, FromFile: `assets/${name}_Bare.tmx`, When: { HasMod: 'Waifuhtr.StardewSim' } },
+        changes.push({ Action: 'Load', Target: `Maps/${name}`, FromFile: `assets/${name}.tmx`, When: BAKED },
+          { Action: 'Load', Target: `Maps/${name}`, FromFile: `assets/${name}_Bare.tmx`, When: BRIDGE },
           { Action: 'EditData', Target: 'Data/Locations', Entries: { [name]: { DisplayName: m.names?.[name] || name, DefaultArrivalTile: { X: arr[0], Y: arr[1] }, CreateOnLoad: { MapPath: `Maps/${name}` } } } });
       }
-      if (Object.keys(chairs).length) changes.push({ Action: 'EditData', Target: 'Data/ChairTiles', Entries: chairs, When: { 'HasMod |contains=Waifuhtr.StardewSim': false } });
+      if (Object.keys(chairs).length) changes.push({ Action: 'EditData', Target: 'Data/ChairTiles', Entries: chairs, When: BAKED });
       for (const pt of m.patches || []) {
         const pm = new GameMap(JSON.parse(fs.readFileSync(path.join(DATA, pt.file), 'utf8'))), f = path.basename(pt.file, '.json') + '.tmx';
         writeTmx(pm, f);
@@ -529,10 +533,9 @@ export async function sdv(argv) {
       }
       for (const img of images) { const src = path.join(DATA, 'img', img + '.png'); if (fs.existsSync(src)) fs.copyFileSync(src, path.join(A, img.split('/').pop() + '.png')); }
       if ((m.states || []).length) notes.push(`needs in-game progress: ${m.states.join(', ')} (e.g. repair the beach bridge)`);
-      const deps = [...new Set(Object.values(m.furniture || {}).flat().map(pl => furnData().items[pl.id]?.mod).filter(Boolean))];
-      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.0', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid,
-        ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' }, Dependencies: [...deps.map(u => ({ UniqueID: u, IsRequired: true })), { UniqueID: 'Waifuhtr.StardewSim', IsRequired: false }] }, null, 2));
-      fs.writeFileSync(path.join(dir, 'content.json'), JSON.stringify({ Format: '2.0.0', Changes: changes }, null, 2));
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.1', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid,
+        ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' }, Dependencies: [...deps.map(u => ({ UniqueID: u, IsRequired: false })), { UniqueID: 'Waifuhtr.StardewSim', IsRequired: false }] }, null, 2));
+      fs.writeFileSync(path.join(dir, 'content.json'), JSON.stringify({ Format: '2.0.0', DynamicTokens: [{ Name: 'UseBridge', Value: 'false' }, useBridge], Changes: changes }, null, 2));
       const ss = await sdv(['ss-export', id, '-o', fl.o || 'dist', '--name', `[SS] ${title}`]);
       return { text: `wrote ${dir} (${changes.length} changes, ${images.size} images${deps.length ? ', requires ' + deps.join(', ') : ''})\n${ss.text}${notes.length ? '\nnote: ' + notes.join(' ') : ''}` };
     }
@@ -550,9 +553,9 @@ export async function sdv(argv) {
       const name = fl.name || `[SS] ${m.title || id}`, dir = path.join(fl.o || 'dist', name);
       fs.mkdirSync(dir, { recursive: true });
       const needs = [...new Set(names.size ? [...names].flatMap(n => (m.furniture?.[n] || []).map(pl => fd.items[pl.id]?.mod).filter(Boolean)) : [])];
-      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: name, Author: 'Stardew Sim', Version: '1.0.0', Description: `Real furniture layout for ${[...names].join(', ')}`, UniqueID: `StardewSim.${id.replace(/[^\w.]/g, '')}`,
-        ContentPackFor: { UniqueID: 'Waifuhtr.StardewSim' }, Dependencies: needs.map(u => ({ UniqueID: u, IsRequired: true })) }, null, 2));
-      fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify({ Locations: locs, Actions: actions }, null, 1));
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: name, Author: 'Stardew Sim', Version: '1.0.1', Description: `Real furniture layout for ${[...names].join(', ')}`, UniqueID: `StardewSim.${id.replace(/[^\w.]/g, '')}`,
+        ContentPackFor: { UniqueID: 'Waifuhtr.StardewSim' }, Dependencies: needs.map(u => ({ UniqueID: u, IsRequired: false })) }, null, 2));
+      fs.writeFileSync(path.join(dir, 'layout.json'), JSON.stringify({ RequiresMods: needs, Locations: locs, Actions: actions }, null, 1));
       return { text: `wrote ${dir}: ${[...names].map(n => `${n} ${locs[n].Furniture.length} furniture`).join(', ')}${Object.keys(actions).length ? `, ${Object.keys(actions).length} actions` : ''}${needs.length ? `\nrequires: ${needs.join(', ')}` : ''}` };
     }
     case 'ss-import': {

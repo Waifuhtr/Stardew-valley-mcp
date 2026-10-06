@@ -1,7 +1,7 @@
 {
   "Name": "Stardew Sim Bridge",
   "Author": "Waifuhtr",
-  "Version": "1.0.0",
+  "Version": "1.0.1",
   "Description": "Places real furniture/wallpaper/floors from Stardew Sim layouts, adds furniture actions (kitchen, calendar, jukebox) without other frameworks, and exports room layouts for AI tools.",
   "UniqueID": "Waifuhtr.StardewSim",
   "EntryDll": "StardewSim.dll",
