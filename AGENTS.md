@@ -74,8 +74,10 @@ Other: `px read sheet.png --frame 16,32,0` (PNG → PXT), `px layers f.pxt [-o d
 `px preview f.png --frames 16,32,0,1,2,3`, `px slice`/`px pack`, `px ops-help` (px line rect frect circle fill replace
 outline flip rot shift mirror hue sat light quantize dither paste frame copy move copyframe remap snap).
 
-Vanilla look (what made the beach cabin stop looking artificial):
-- one material family per object (warm weathered wood), max one muted accent; no pure white, no bright primaries.
+Vanilla look (learned by reading vanilla tiles with `px read --rect`; do that first for any new material):
+- one material family per object, max one accent; no pure white/black. Wood = saturated orange-browns (#935000 range).
+- interiors: brighter, low-contrast floors (#d98f3b range, gaps only one step darker); orange room frame around the black void.
+- shadows are flat semi-transparent bands (#21000040..60), not dithered gradients.
 - hand-picked 5-step ramps per material; dark outline = darkest wood tone (#2a160e), never black.
 - boards: lit top edge + dark gap + butt joints + short knot dashes (`planks`/`dplanks`); no random single-pixel noise.
 - roofs: boards run down each slope (`dplanks` 135/45 under a `mask poly`), thick fascia, deep solid shadow under eaves.

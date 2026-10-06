@@ -21,83 +21,83 @@ const PLACE = { map: 'Beach', x: 18, y: 6, w: 7, h: 7 };
 const DOOR = [[3, 6], [3, 5]];
 const INSIDE = { name: 'BeachCabin', arrive: [5, 9] };
 
-// hand-picked ramps (dark -> light): weathered driftwood like the vanilla beach shacks, one faded sea-green accent
+// Ramps (dark -> light) tuned after reading vanilla tiles with `px read`: few, saturated, warm tones;
+// ramp[0] doubles as board gap and outline (never black); interiors are brighter and lower contrast.
 const RAMP = {
-  wall: '#2a160e,#4a2814,#73401c,#9a5a26,#c07d38', roof: '#22140e,#3e2617,#5e3c22,#80552e,#a4723e',
-  post: '#24130c,#432414,#6a3a1c,#8e5228,#b06c34', teal: '#1b2f2c,#2c4a44,#466e62,#6b9282,#90b29e',
-  floor: '#3e1e14,#6e3a22,#9c5c32,#c48448,#e0b070', inwall: '#3a2416,#5e3c24,#845a36,#a8784a,#c89a64',
+  wall: '#4e2a0a,#7a4404,#965206,#b86c10,#d89036', roof: '#4a2a0a,#62380a,#7e4a10,#9c6214,#bc8030',
+  post: '#3e2008,#5e3206,#7a4208,#9a5a0e,#bc7826', teal: '#123a32,#1d5a48,#2a7a5e,#3d9a74,#62bc8e',
+  floor: '#b06033,#c87838,#dc8e3e,#f0a84c,#ffc466', inwall: '#5a2c16,#7e4020,#9a5428,#b46a32,#d08a40',
 };
-const PAL = `pal o #2a160e; pal O #3e2617; pal d #3a1c14; pal D #6a3420; pal w #9a5530; pal W #c47c42; pal y #e0a862;
-pal v #160c0a; pal V #2a1a16; pal r #6e2a22; pal R #a84434; pal Q #d8c8b0; pal q #b0a088;
-pal m #3a3a40; pal M #5d5f66; pal I #8a8d94; pal k #f4d070; pal K #d89a30; pal Z #ffe0a0;
-pal l #2e3a1a; pal L #4a5e24; pal e #6e8a30; pal E #a0b050; pal n #c9a66b; pal N #8a6a3a;
-pal z #e08040; pal c #c05a34; pal C #e08a58; pal x #8a3322; pal s #e0b0a0; pal S #f8dcd0;
-pal g #1e4a78; pal G #3e86b8; pal h #7fc4e6; pal H #d4f0ff; pal b #d83a3a; pal t #f4eedc; pal T #d8d0bc; pal j #4e1a12; pal u #2c4a44; pal a #466e62; pal A #6b9282; pal U #90b29e`;
+const PAL = `pal o #3a1e08; pal d #4e2a0a; pal D #7a4404; pal w #965206; pal W #b86c10; pal y #d89036; pal Y #f0b860;
+pal v #2a1408; pal V #4a2410; pal R #b8322a; pal r #7e1e1c; pal Q #f0e6d0; pal q #c8b898;
+pal m #2e2c34; pal M #4a4852; pal I #6e6c78; pal i #9a98a4; pal k #f8d468; pal K #d8a030; pal Z #fff0b0;
+pal l #2e5a14; pal L #4a7a1e; pal e #6aa02a; pal E #94c83a; pal n #d8b878; pal N #a07a40;
+pal z #e87838; pal c #b8502c; pal C #e08048; pal x #7e3020; pal s #e8c0a0; pal S #fff0dc;
+pal g #3a7ac0; pal G #5aa0e0; pal h #8cccf4; pal H #d8f4ff; pal b #c83a3a; pal t #f0e6d0; pal T #c8b898; pal j #5a2414;
+pal u #123a32; pal U #1d5a48; pal a #2a7a5e; pal A #3d9a74; pal B #62bc8e; pal f #4a2418; pal F #21000060`;
 
 // ---------------------------------------------------------------- exterior (112 x 112)
 const ext = applyOps(newImg(112, 112), `${PAL}
-// --- roof: boards running down each slope (chevron at the ridge), deep overhang
+// --- roof: boards down each slope, lit edge before each gap (vanilla roof structure)
 mask poly 55 2 -1 57 -1 62 16 62 55 22
 dplanks 0 0 56 62 135 5 ${RAMP.roof} 11
 unmask
 mask poly 56 2 112 57 112 62 95 62 56 22
 dplanks 56 0 56 62 45 5 ${RAMP.roof} 12
 unmask
-// fascia (barge boards) along the inner edge: lit top, dark underside
-line 16 62 55 22 W; line 17 62 55 23 w; line 18 62 55 24 D
-line 95 62 56 22 W; line 94 62 56 23 w; line 93 62 56 24 D
-line 0 61 16 61 D; line 95 61 111 61 D; line 0 62 16 62 o; line 95 62 111 62 o
-// ridge cap boards
-fpoly 55 0 46 10 49 10 55 4 61 10 64 10 56 0 w; line 46 10 55 0 W; line 56 0 64 10 D; line 49 10 55 4 d; line 55 4 61 10 d
-// --- gable: horizontal boards, dark vent with slats, heavy shadow under the fascia
-mask poly 55 25 19 62 92 62
+// thick fascia boards on the gable edge, board ends at the eaves
+line 16 62 55 23 y; line 17 62 55 24 W; line 18 62 55 25 w; line 19 62 55 26 D
+line 95 62 56 23 W; line 94 62 56 24 w; line 93 62 56 25 D; line 92 62 56 26 D
+frect 0 59 16 4 D; line 0 59 15 59 W; line 0 62 15 62 d; frect 96 59 16 4 D; line 96 59 111 59 w; line 96 62 111 62 d
+fpoly 55 0 45 11 49 11 55 5 61 11 65 11 56 0 W; line 45 11 55 0 y; line 56 0 65 11 D; line 49 11 55 5 d; line 55 5 61 11 d
+// --- gable boards + vent + shadow under the fascia
+mask poly 55 26 20 62 91 62
 planks 18 24 76 38 h 6 ${RAMP.wall} 21
-fpoly 55 25 19 62 27 62 55 33 84 62 92 62 #1a0c0670
-fpoly 55 29 46 39 64 39 V; line 47 37 63 37 O; line 49 35 61 35 O; line 51 33 59 33 O; line 46 39 64 39 o
+fpoly 55 26 20 62 28 62 55 34 83 62 91 62 F
+fpoly 55 31 47 40 63 40 v; line 48 38 62 38 V; line 50 36 60 36 V; line 52 34 58 34 V; line 47 40 63 40 d
 unmask
-// hanging buoy (faded red/white) on the gable
-line 32 46 32 49 N; fcircle 32 53 4 Q; mask poly 32 53 36 49 36 57; fcircle 32 53 4 R; unmask; mask poly 32 53 28 49 28 57; fcircle 32 53 4 R; unmask
-fcircle 32 53 1 V; circle 32 53 4 o
-// --- walls: horizontal weathered boards, posts, big shadow under the eaves
+// buoy on the gable
+line 32 47 32 49 N; fcircle 32 53 4 Q; mask poly 32 53 36 49 36 57; fcircle 32 53 4 R; unmask; mask poly 32 53 28 49 28 57; fcircle 32 53 4 R; unmask
+px 30 50 S; fcircle 32 53 1 v; circle 32 53 4 d
+// --- walls, corner posts, eave shadow
 planks 12 62 88 40 h 6 ${RAMP.wall} 5
-frect 12 62 88 5 #1a0c0690; frect 12 67 88 3 #1a0c0650
-planks 11 60 5 42 v 5 ${RAMP.post} 31
-planks 96 60 5 42 v 5 ${RAMP.post} 32
-line 11 60 11 101 o; line 100 60 100 101 o
-// --- windows: dark interior, thin warm reflection, faded sea-green shutters
-frect 20 73 18 16 d; frect 22 75 14 12 v; line 28 75 28 86 D; line 22 80 35 80 D
-px 24 76 V; px 25 76 V; px 24 77 V; px 31 82 V; px 32 81 V; px 33 76 W
-frect 16 72 4 18 ${RAMP.teal.split(',')[2]}; line 16 72 16 89 ${RAMP.teal.split(',')[3]}; line 17 74 18 74 ${RAMP.teal.split(',')[1]}; line 17 78 18 78 ${RAMP.teal.split(',')[1]}; line 17 82 18 82 ${RAMP.teal.split(',')[1]}; line 17 86 18 86 ${RAMP.teal.split(',')[1]}
-frect 38 72 4 18 ${RAMP.teal.split(',')[2]}; line 41 72 41 89 ${RAMP.teal.split(',')[1]}; line 38 74 40 74 ${RAMP.teal.split(',')[1]}; line 38 78 40 78 ${RAMP.teal.split(',')[1]}; line 38 82 40 82 ${RAMP.teal.split(',')[1]}; line 38 86 40 86 ${RAMP.teal.split(',')[1]}
-frect 19 89 23 3 W; line 19 91 41 91 D; rect 15 71 28 22 o
-frect 74 73 18 16 d; frect 76 75 14 12 v; line 82 75 82 86 D; line 76 80 89 80 D
-px 78 76 V; px 79 76 V; px 78 77 V; px 86 82 V; px 87 81 V; px 87 76 W
-frect 70 72 4 18 ${RAMP.teal.split(',')[2]}; line 70 72 70 89 ${RAMP.teal.split(',')[3]}; line 71 74 72 74 ${RAMP.teal.split(',')[1]}; line 71 78 72 78 ${RAMP.teal.split(',')[1]}; line 71 82 72 82 ${RAMP.teal.split(',')[1]}; line 71 86 72 86 ${RAMP.teal.split(',')[1]}
-frect 92 72 4 18 ${RAMP.teal.split(',')[2]}; line 95 72 95 89 ${RAMP.teal.split(',')[1]}; line 92 74 94 74 ${RAMP.teal.split(',')[1]}; line 92 78 94 78 ${RAMP.teal.split(',')[1]}; line 92 82 94 82 ${RAMP.teal.split(',')[1]}; line 92 86 94 86 ${RAMP.teal.split(',')[1]}
-frect 73 89 23 3 W; line 73 91 95 91 D; rect 69 71 28 22 o
-// --- door: faded sea-green boards in a dark frame, brass knob, starfish above
-frect 46 69 20 33 D; line 46 69 65 69 W
-planks 48 71 16 31 v 4 ${RAMP.teal} 41
-line 48 71 63 71 V; rect 45 68 22 34 o; px 61 86 k; px 61 87 K
-px 56 63 z; px 55 64 z; px 57 64 z; px 56 64 C; px 54 65 z; px 58 65 z; px 56 65 z; px 55 66 z; px 57 66 z
-// --- lantern (warm glow)
-fcircle 70 76 7 #ffc86022
-line 68 69 72 69 d; line 70 69 70 71 d; frect 68 71 5 7 o; frect 69 72 3 5 k; px 69 72 Z; line 68 78 72 78 d
-// --- stovepipe through the right slope
+frect 12 62 88 4 F; frect 12 66 88 2 #21000030
+planks 10 60 5 42 v 5 ${RAMP.post} 31
+planks 97 60 5 42 v 5 ${RAMP.post} 32
+line 10 60 10 101 o; line 101 60 101 101 o; line 11 60 11 101 y
+// --- windows: dark panes + warm glint, sea-green shutters, sill
+frrect 20 72 18 18 d; frect 21 73 16 16 W; frect 22 74 14 14 v; line 28 74 28 87 D; line 22 80 35 80 D
+px 23 75 V; px 24 75 V; px 23 76 V; px 30 81 V; px 31 81 V; px 30 82 V
+planks 15 72 5 18 v 5 ${RAMP.teal} 61; planks 38 72 5 18 v 5 ${RAMP.teal} 62
+rect 15 72 5 18 d; rect 38 72 5 18 d
+frect 18 90 22 3 y; line 18 92 39 92 D; line 18 90 39 90 Y; rrect 17 89 24 5 d
+frrect 74 72 18 18 d; frect 75 73 16 16 W; frect 76 74 14 14 v; line 82 74 82 87 D; line 76 80 89 80 D
+px 77 75 V; px 78 75 V; px 77 76 V; px 84 81 V; px 85 81 V; px 84 82 V
+planks 69 72 5 18 v 5 ${RAMP.teal} 63; planks 92 72 5 18 v 5 ${RAMP.teal} 64
+rect 69 72 5 18 d; rect 92 72 5 18 d
+frect 72 90 22 3 y; line 72 92 93 92 D; line 72 90 93 90 Y; rrect 71 89 24 5 d
+// --- door: sea-green boards, light frame, knob, starfish
+frect 46 68 20 34 W; line 46 68 65 68 Y; line 46 68 46 101 y; line 65 68 65 101 D
+planks 48 70 16 32 v 4 ${RAMP.teal} 41
+line 48 70 63 70 u; rect 45 67 22 35 d; px 60 86 k; px 60 87 K
+px 56 62 z; px 55 63 z; px 57 63 z; px 56 63 C; px 54 64 z; px 58 64 z; px 56 64 z; px 55 65 z; px 57 65 z
+// --- lantern
+fcircle 70 76 7 #ffd06020
+line 68 69 72 69 d; line 70 69 70 71 d; frrect 68 71 5 8 d; frect 69 72 3 5 k; px 69 72 Z; line 68 79 72 79 d
+// --- stovepipe
 mask poly 80 4 87 4 87 34 80 27
-frect 80 4 7 31 M; line 81 4 81 34 I; line 86 4 86 34 m; line 80 14 86 14 m; line 80 24 86 24 m
+frect 80 4 7 31 M; line 81 4 81 34 i; line 82 4 82 34 I; line 86 4 86 34 m; line 80 14 86 14 m; line 80 24 86 24 m
 unmask
-frect 78 1 11 3 m; line 78 1 88 1 I; rect 77 0 13 5 o; line 79 4 79 27 o; line 87 4 87 34 o
+frrect 78 1 11 4 M; line 79 1 87 1 i; line 79 4 87 4 m; rrect 77 0 13 6 o; line 79 5 79 27 o; line 87 5 87 34 o
 outline o
-// --- ground: step, barrel, leaning rod, rope, grass tufts, contact shadow on the sand
-frect 46 102 20 4 w; line 46 102 65 102 W; line 46 105 65 105 D; rect 45 101 22 6 o
-planks 2 86 10 16 v 2 ${RAMP.post} 51
-line 2 89 11 89 m; line 2 97 11 97 m; line 2 86 11 86 W; rect 1 85 12 18 o
-line 106 101 101 63 N; line 107 101 102 63 o; px 101 62 I; frect 104 93 3 2 m
-fcircle 39 100 3 n; circle 39 100 3 N; px 39 100 N; circle 39 100 1 N
-line 15 101 13 95 L; line 16 101 16 94 e; line 17 101 19 96 E; line 18 101 21 98 L; line 14 101 11 98 e
-line 92 101 90 96 e; line 93 101 94 94 E; line 94 101 97 97 L; line 95 101 96 98 e
-gradient 4 102 104 6 #4a2a1060 transparent
+// --- ground props + contact shadow
+frect 46 102 20 4 w; line 46 102 65 102 y; line 46 105 65 105 D; rrect 45 101 22 6 o
+frrect 2 86 10 16 w; planks 3 87 8 14 v 2 ${RAMP.post} 51; line 2 89 11 89 M; line 2 97 11 97 M; line 3 87 10 87 y; rrect 1 85 12 18 o
+line 106 101 101 63 N; line 107 101 102 63 d; px 101 62 i; frect 104 93 3 2 M
+fcircle 39 100 3 n; circle 39 100 3 N; circle 39 100 1 N
+line 15 101 13 95 L; line 16 101 16 94 e; line 17 101 19 96 E; line 18 101 21 98 L; line 14 101 11 98 e; px 16 94 E
+line 92 101 90 96 e; line 93 101 94 94 E; line 94 101 97 97 L; line 95 101 96 98 e; px 94 94 E
+frect 6 102 100 3 #21000038; frect 10 105 92 2 #21000020
 `);
 writePNG(path.join(MOD, 'assets/beach_cabin_exterior.png'), ext);
 writePNG(path.join(IMG, 'beach_cabin_exterior.png'), ext);
@@ -105,15 +105,15 @@ writePNG(path.join(IMG, 'beach_cabin_exterior.png'), ext);
 // ---------------------------------------------------------------- interior tilesheet (8 x 6 tiles)
 // 0 void | 1,2 floor | 3 floor w/ wall shadow | 4 doormat | 5 wall top | 6 wall mid | 7 wall bottom
 // 8,9,16,17 window (2x2) | 10 shelf | 11 lamp | bed 18,19,26,27,34,35 | table 20,21,28,29 | plant 22,30 | rug 36,37,38,44,45,46
-const wallTop = `planks 0 0 16 16 v 4 ${RAMP.inwall} 3; frect 0 0 16 3 D; line 0 0 15 0 W; line 0 3 15 3 #00000040`;
-const wallMid = `planks 0 0 16 16 v 4 ${RAMP.inwall} 4`;
-const wallBot = `planks 0 0 16 16 v 4 ${RAMP.inwall} 6; frect 0 11 16 5 w; line 0 11 15 11 W; line 0 15 15 15 d`;
+const wallTop = `planks 0 0 16 16 v 5 ${RAMP.inwall} 3; frect 0 0 16 4 j; line 0 4 15 4 x; frect 0 5 16 2 #21000040`;
+const wallMid = `planks 0 0 16 16 v 5 ${RAMP.inwall} 4`;
+const wallBot = `planks 0 0 16 16 v 5 ${RAMP.inwall} 6; frect 0 10 16 6 D; line 0 10 15 10 y; line 0 11 15 11 W; line 0 15 15 15 d`;
 const sheet = applyOps(newImg(128, 96), `${PAL}
 frame 16 16 0; frect 0 0 16 16 #0e0a0c
-frame 16 16 1; planks 0 0 16 16 h 4 ${RAMP.floor} 71
-frame 16 16 2; planks 0 0 16 16 h 4 ${RAMP.floor} 72
-frame 16 16 3; planks 0 0 16 16 h 4 ${RAMP.floor} 73; gradient 0 0 16 6 #00000066 transparent
-frame 16 16 4; planks 0 0 16 16 h 4 ${RAMP.floor} 74; frect 1 3 14 10 x; frect 2 4 12 8 c; line 2 6 13 6 C; line 2 9 13 9 C; line 1 3 1 12 j
+frame 16 16 1; planks 0 0 16 16 v 4 ${RAMP.floor} 71
+frame 16 16 2; planks 0 0 16 16 v 4 ${RAMP.floor} 72
+frame 16 16 3; planks 0 0 16 16 v 4 ${RAMP.floor} 73; frect 0 0 16 4 #4a201050; frect 0 4 16 2 #4a201028
+frame 16 16 4; planks 0 0 16 16 v 4 ${RAMP.floor} 74; frrect 1 3 14 10 x; frrect 2 4 12 8 c; line 3 6 12 6 C; line 3 9 12 9 C; line 2 11 13 11 x
 frame 16 16 5; ${wallTop}
 frame 16 16 6; ${wallMid}
 frame 16 16 7; ${wallBot}
@@ -122,30 +122,44 @@ frame 16 16 9; ${wallTop}
 frame 16 16 16; ${wallMid}
 frame 16 16 17; ${wallMid}
 endframe
-frect 3 21 26 22 D; frect 4 22 24 20 W; gradient 5 23 22 12 H h; frect 5 35 22 6 G; line 5 35 26 35 H; px 9 38 h; px 20 37 h
-line 16 23 16 40 w; line 5 30 26 30 w; rect 2 20 28 24 o; frect 1 43 30 2 W; line 1 44 30 44 D
-frect 5 23 3 18 S; line 7 23 7 40 s; frect 24 23 3 18 S; line 24 23 24 40 s
-frame 16 16 10; ${wallMid}; frect 1 10 14 2 W; line 1 11 14 11 D; frect 2 5 2 5 L; px 2 4 e; px 3 4 e; frect 6 7 4 3 S; px 7 6 s; px 8 6 S; frect 11 6 2 4 G; px 11 5 h
-frame 16 16 11; ${wallMid}; fcircle 8 8 6 #ffd86630; line 6 3 10 3 d; frect 6 4 5 7 o; frect 7 5 3 5 k; px 7 5 Z; line 6 11 10 11 d
+frrect 3 22 26 22 f; frect 4 23 24 20 y; frect 5 24 22 18 W
+frect 6 25 20 8 h; frect 6 25 20 3 H; frect 6 33 20 3 G; frect 6 36 20 4 g; line 6 36 25 36 h; px 9 38 h; px 18 37 h; px 21 39 G
+line 16 25 16 39 y; line 6 31 25 31 y; line 6 40 25 40 D
+frect 6 25 3 15 S; line 8 25 8 39 s; frect 23 25 3 15 S; line 23 25 23 39 s
+frect 2 44 28 3 y; line 2 44 29 44 Y; line 2 46 29 46 D; rrect 1 43 30 5 f
+frame 16 16 10; ${wallMid}; frect 1 10 14 2 W; line 1 10 14 10 y; line 1 12 14 12 d; frect 2 5 2 5 L; px 2 4 E; px 3 4 e; frrect 6 7 4 3 S; px 7 6 s; px 8 6 S; frect 11 5 2 5 a; px 11 4 B; px 12 6 B
+frame 16 16 11; ${wallMid}; fcircle 8 8 6 #ffd06030; line 6 3 10 3 d; frrect 6 4 5 8 f; frect 7 5 3 6 k; px 7 5 Z; line 6 12 10 12 d
 endframe
-mask rect 32 32 32 48
-frect 33 32 30 6 w; line 33 32 62 32 y; rect 32 31 32 8 o; px 34 33 W; px 61 33 W
-frect 35 38 26 7 t; line 35 44 60 44 T; frect 36 39 10 5 H; frect 50 39 10 5 H; rect 34 37 28 9 o
-frect 34 45 28 28 u; frect 34 49 28 3 a; frect 34 56 28 3 a; frect 34 63 28 3 a; frect 34 70 28 3 a
-line 34 45 61 45 U; line 34 45 34 72 A; rect 33 44 30 30 o
-frect 33 73 30 5 w; line 33 73 62 73 y; line 33 77 62 77 d; rect 32 72 32 7 o
-unmask
-fcircle 80 42 12 o; fcircle 80 42 11 w; fcircle 80 41 10 W; circle 80 41 9 y
-frect 70 53 3 10 D; frect 87 53 3 10 D; line 70 53 70 62 w; line 87 53 87 62 w; frect 78 54 4 8 D
-frect 69 62 5 1 o; frect 86 62 5 1 o
-frect 76 37 8 4 S; line 76 40 83 40 s; fcircle 80 36 2 b; px 79 35 C; fcircle 77 37 1 z
-frect 99 52 10 10 c; line 99 52 108 52 C; line 99 61 108 61 x; rect 98 51 12 12 o
+frrect 33 32 30 7 f; frect 34 33 28 5 w; line 34 33 61 33 y; line 34 37 61 37 D
+frrect 34 38 28 9 f; frect 35 39 26 7 S; line 35 45 60 45 q; frrect 36 39 11 5 t; frrect 49 39 11 5 t; line 37 43 45 43 q; line 50 43 58 43 q
+frrect 33 46 30 28 f; frect 34 47 28 26 U
+mask rect 34 47 28 26; frect 34 47 7 6 a; frect 48 47 7 6 a; frect 41 53 7 6 a; frect 55 53 7 6 a; frect 34 59 7 6 a; frect 48 59 7 6 a; frect 41 65 7 6 a; frect 55 65 7 6 a; unmask
+line 34 47 61 47 B; line 34 72 61 72 u
+frrect 33 72 30 6 f; frect 34 73 28 4 w; line 34 73 61 73 y; line 34 76 61 76 D
+fcircle 80 45 12 f; fcircle 80 45 11 D; fcircle 80 44 10 w; fcircle 79 43 8 W; fcircle 78 42 5 y; px 76 39 Y; px 77 39 Y
+frect 70 53 3 10 w; frect 87 53 3 10 w; line 70 53 70 62 y; line 72 53 72 62 D; line 87 53 87 62 y; line 89 53 89 62 D; frect 78 54 4 8 D; line 78 54 78 61 w
+line 69 62 73 62 f; line 86 62 90 62 f; rrect 69 52 5 11 f; rrect 86 52 5 11 f
+frrect 75 39 10 5 S; line 76 43 83 43 s; fcircle 80 38 2 R; px 79 37 C; fcircle 77 39 1 z; px 83 38 E
+frrect 99 52 10 10 c; line 100 52 107 52 C; line 100 61 107 61 x; rrect 98 51 12 12 f; line 99 54 108 54 x
 line 104 51 98 38 L; line 104 51 101 36 e; line 105 51 106 35 e; line 105 51 111 40 L; line 104 51 102 42 E
-line 105 51 109 44 E; line 104 51 97 45 e; px 98 38 E; px 111 40 E; px 101 36 E; px 106 35 E; line 103 51 100 48 L
-mask poly 66 70 72 65 104 65 110 70 110 89 104 94 72 94 66 89
-frect 64 64 48 32 a; frect 64 68 48 3 S; frect 64 74 48 3 n; frect 64 80 48 3 S; frect 64 86 48 3 n
+line 105 51 109 44 E; line 104 51 97 45 e; px 98 38 E; px 111 40 E; px 101 36 E; px 106 35 E; line 103 51 100 48 l
+mask poly 67 70 72 65 104 65 109 70 109 89 104 94 72 94 67 89
+frect 64 64 48 32 U; frect 70 69 36 21 a; frect 74 73 28 13 t; frect 78 76 20 7 A; frect 84 78 8 3 Q
+line 64 67 111 67 B; line 64 91 111 91 u
 unmask
-line 66 70 72 65 o; line 72 65 104 65 o; line 104 65 110 70 o; line 110 70 110 89 o; line 110 89 104 94 o; line 104 94 72 94 o; line 72 94 66 89 o; line 66 89 66 70 o
+line 67 70 72 65 f; line 72 65 104 65 f; line 104 65 109 70 f; line 109 70 109 89 f; line 109 89 104 94 f; line 104 94 72 94 f; line 72 94 67 89 f; line 67 89 67 70 f
+// room frame (Front layer over the black void): 12 left, 13 right, 14 bottom, 15 top, corners 39 TL 47 TR 23 BL 31 BR, 40/41 corridor joints
+frame 16 16 12; line 13 0 13 15 w; line 14 0 14 15 y; line 15 0 15 15 d
+frame 16 16 13; line 0 0 0 15 d; line 1 0 1 15 y; line 2 0 2 15 w
+frame 16 16 14; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w
+frame 16 16 15; line 0 13 15 13 w; line 0 14 15 14 y; line 0 15 15 15 d
+frame 16 16 39; frect 13 13 3 3 w; line 14 14 15 14 y; line 14 14 14 15 y; px 15 15 d
+frame 16 16 47; frect 0 13 3 3 w; line 0 14 1 14 y; line 1 14 1 15 y; px 0 15 d
+frame 16 16 23; frect 13 0 3 3 w; line 14 1 15 1 y; line 14 0 14 1 y; px 15 0 d
+frame 16 16 31; frect 0 0 3 3 w; line 0 1 1 1 y; line 1 0 1 1 y; px 0 0 d
+frame 16 16 40; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w; line 13 0 13 15 w; line 14 1 14 15 y; line 15 0 15 15 d
+frame 16 16 41; line 0 0 15 0 d; line 0 1 15 1 y; line 0 2 15 2 w; line 0 0 0 15 d; line 1 1 1 15 y; line 2 0 2 15 w
+endframe
 `);
 writePNG(path.join(MOD, 'assets/beach_cabin_interior.png'), sheet);
 writePNG(path.join(IMG, 'beach_cabin_interior.png'), sheet);
@@ -182,6 +196,10 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
   set(Front, 10, 4, 22); set(Buildings, 10, 5, 30);                                                                        // potted palm
   for (const [x, y, i] of [[4, 6, 36], [5, 6, 37], [6, 6, 38], [4, 7, 44], [5, 7, 45], [6, 7, 46]]) set(Back2, x, y, i);   // rug
   set(Back2, door, 9, 4);                                                                                                  // doormat
+  for (let y = 1; y <= 9; y++) { set(Front, 0, y, 12); set(Front, W - 1, y, 13); }                                       // room frame
+  for (let x = 1; x <= W - 2; x++) { set(Front, x, 0, 15); if (x !== door) set(Front, x, 10, 14); }
+  set(Front, 0, 0, 39); set(Front, W - 1, 0, 47); set(Front, 0, 10, 23); set(Front, W - 1, 10, 31);
+  set(Front, door - 1, 10, 40); set(Front, door + 1, 10, 41); set(Front, door - 1, 11, 12); set(Front, door + 1, 11, 13);
   const props = { Warp: `${door} 12 Beach ${PLACE.x + DOOR[0][0]} ${PLACE.y + DOOR[0][1] + 1}`, AmbientLight: '90 90 60' };
   const j = makeMap(INSIDE.name, W, H, [T], { Back, Back2, Buildings, Front }, props, {});
   fs.writeFileSync(path.join(WEB, 'BeachCabin.json'), JSON.stringify(j));

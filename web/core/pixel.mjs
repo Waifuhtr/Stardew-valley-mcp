@@ -137,7 +137,7 @@ fill x y c (flood) | replace c1 c2 | outline c [diag] | clear | canvas w h [ox o
 flipx | flipy | rot (90 cw) | shift dx dy | mirror (left half -> right) | hue deg | sat f | light f | bright n
 quantize n | dither x y w h c1 c2 | paste file x y [sx sy w h] | frame fw fh i (select frame as canvas origin) | endframe
 copy sx sy w h dx dy | move sx sy w h dx dy | copyframe fw fh src dst [flipx] | remap c1,c2,.. d1,d2,.. | snap [c1,c2,..] (to locked palette)
-fpoly x1 y1 x2 y2 ... c | mask x y w h | mask poly x1 y1 ... | mask opaque | unmask  (mask clips every later op; add "and" to intersect)
+rrect/frrect x y w h c (rounded corners) | fpoly x1 y1 x2 y2 ... c | mask x y w h | mask poly x1 y1 ... | mask opaque | unmask  (mask clips every later op; add "and" to intersect)
 textures (RAMP = c1,c2,.. dark->light or ramp:#hex): planks x y w h h|v size RAMP [seed] | dplanks x y w h angle size RAMP [seed] (boards at any angle, e.g. roof slopes) | shingles x y w h sw sh RAMP [seed]
 bricks x y w h bw bh mortar RAMP [seed] | gradient x y w h c1 c2 [v|h] (dithered; transparent side is skipped) | noise x y w h c amount [seed]
 colors may have alpha (#00000055) -> blended (shadows, glow)`;
@@ -212,21 +212,36 @@ export function applyOps(im, script, { loadImg, lockPal } = {}) {
         for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const v = r(); if (v < amt && get(img, x + i + ox, y + j + oy)[3]) P(x + i, y + j, c); } break; }
       case 'planks': case 'dplanks': {
         // planks x y w h h|v size RAMP [seed] | dplanks x y w h angle size RAMP [seed]
-        // boards: lit top edge, dark gap at the bottom, butt joints, short knot dashes (no random single pixels)
+        // Stardew-style boards: uniform board tone, lit edge, shade row, 1px gap (= ramp[0]), butt joints,
+        // texture from short 2-3px shade clusters (never isolated noise pixels)
         const [x, y, w, h] = n, ang = op === 'planks' ? (a[4] === 'v' ? 90 : 0) : +a[4];
-        const sz = +a[5] || 4, rp = R(a[6]), seed = +a[7] || 7, L = rp.length, rad = ang * Math.PI / 180, ca = Math.cos(rad), sa = Math.sin(rad);
+        const sz = +a[5] || 4, rp = R(a[6]), seed = +a[7] || 7, L = rp.length, rad = ang * Math.PI / 180, ca = Math.cos(rad), sa = Math.sin(rad), axis = ang % 90 === 0;
         const hsh = (p, q) => { let t = Math.imul(p * 374761393 + q * 668265263 + seed * 2246822519, 1274126177); t ^= t >>> 13; t = Math.imul(t, 1103515245); return ((t ^ (t >>> 16)) >>> 0) / 4294967296; };
+        const mid = Math.max(1, Math.min(L - 2, Math.floor((L - 1) / 2)));
         for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) {
-          const t = px * ca + py * sa, u = -px * sa + py * ca, b = Math.floor(u / sz), k = u - b * sz;
-          const tone = Math.min(L - 2, Math.max(1, Math.round((L - 1) / 2 + (hsh(b, 0) - 0.5) * 1.5)));
-          const seg = 14 + Math.floor(hsh(b, 1) * 26), off = Math.floor(hsh(b, 2) * seg), tt = Math.floor(t) + off, jt = ((tt % seg) + seg) % seg;
+          const t = px * ca + py * sa, u = -px * sa + py * ca, b = Math.floor(u / sz), k = Math.floor(u - b * sz);
+          const tone = hsh(b, 0) < 0.18 ? Math.max(1, mid - 1) : mid, lit = rp[Math.min(L - 1, tone + 1)], shade = rp[Math.max(0, tone - 1)];
+          const seg = 18 + Math.floor(hsh(b, 1) * 30), tt = Math.floor(t) + Math.floor(hsh(b, 2) * seg), jt = ((tt % seg) + seg) % seg;
           let c = rp[tone];
-          if (k >= sz - 1) c = rp[0];
-          else if (k < 1) c = rp[Math.min(L - 1, tone + 1)];
-          else if (jt === 0) c = rp[0];
-          else if (jt === 1) c = rp[Math.min(L - 1, tone + 1)];
-          else if (sz >= 4 && ang % 90 === 0 && Math.abs(k - sz / 2) < 0.6) { const kn = Math.floor(tt / 5); if (hsh(b, kn + 9) < 0.14) c = rp[Math.max(0, tone - 1)]; }
+          if (axis) {
+            if (k === sz - 1) c = rp[0];
+            else if (jt === 0) c = rp[0];
+            else if (k === 0 || jt === 1) c = lit;
+            else if (k === sz - 2 && sz >= 5) c = shade;
+            else { const q = Math.floor(tt / 3); const hv = hsh(b * 7 + k, q + 11); if (hv < 0.13) c = shade; else if (hv > 0.97) c = lit; }
+          } else {
+            if (k === 0) c = rp[0];
+            else if (k === sz - 1) c = lit;
+            else { const q = Math.floor(tt / 3); if (hsh(b * 7 + k, q + 11) < 0.1) c = shade; }
+          }
           P(px, py, c);
+        }
+        break; }
+      case 'rrect': case 'frrect': { // rounded (corner pixels cut) rect outline / filled
+        const [x, y, w, h] = n, c = C(a[4]);
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+          const corner = (i === 0 || i === w - 1) && (j === 0 || j === h - 1); if (corner) continue;
+          if (op === 'frrect' || i === 0 || j === 0 || i === w - 1 || j === h - 1 || ((i === 1 || i === w - 2) && (j === 1 || j === h - 2) && false)) P(x + i, y + j, c);
         }
         break; }
       case 'shingles': { // shingles x y w h sw sh ramp [seed] : staggered shingles, light top-left, dark bottom
