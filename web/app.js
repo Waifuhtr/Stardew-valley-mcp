@@ -538,7 +538,7 @@ async function loadMods() {
 (async () => {
   resize();
   S.index = await (await fetch('data/index.json')).json();
-  S.index.textures['stardewsim/room_kit'] = [128, 96];
+  S.index.textures['stardewsim/room_kit'] = [128, 112];
   try { S.furn = await (await fetch('data/furniture.json')).json(); } catch { S.furn = null; }
   try { // locally imported third-party packs (tools/import-mods.mjs; not published)
     const t = await (await fetch('data/thirdparty/furniture.json')).json();

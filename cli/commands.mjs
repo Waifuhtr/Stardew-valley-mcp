@@ -40,7 +40,7 @@ export function furnData() {
 function index() {
   if (INDEX) return INDEX;
   INDEX = JSON.parse(fs.readFileSync(path.join(DATA, 'index.json'), 'utf8'));
-  INDEX.textures['stardewsim/room_kit'] = [128, 96];
+  INDEX.textures['stardewsim/room_kit'] = [128, 112];
   const list = path.join(DATA, 'mods/index.json');
   if (!process.env.SDV_VANILLA && fs.existsSync(list)) {
     for (const id of JSON.parse(fs.readFileSync(list, 'utf8'))) {
@@ -525,7 +525,7 @@ export async function sdv(argv) {
       const [name, w, h] = [p[0], +p[1], +p[2]], id = fl.mod || 'user';
       if (!name || !w || !h) throw new Error('room <Name> <w> <h> --exit Map,x,y');
       const W = w + 2, H = h + 6, N = W * H, cx = Math.floor(W / 2), floorEnd = 3 + h;
-      const T = { id: 'z_room_kit', img: 'stardewsim/room_kit', cols: 8, rows: 6, first: 1, tp: {} };
+      const T = { id: 'z_room_kit', img: 'stardewsim/room_kit', cols: 8, rows: 7, first: 1, tp: {} };
       const L = { Back: new Uint16Array(N), Back2: new Uint16Array(N), Buildings: new Uint16Array(N), Front: new Uint16Array(N) };
       const set = (l, x, y, i) => { L[l][y * W + x] = i + 1; };
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -659,7 +659,7 @@ export async function sdv(argv) {
       const rooms = String(fl.rooms || '').split(',').map(r => { const [n, wh] = r.split(':'); const [w, h] = wh.split('x').map(Number); return { n, w, h }; });
       if (!name || !rooms.length || rooms.some(r => !r.w || !r.h)) throw new Error('house <Name> --rooms Hall:14x8,Kitchen:12x8 --exit Map,x,y [--entry Hall] [--mod id]');
       const H0 = Math.max(...rooms.map(r => r.h)), W = rooms.reduce((a, r) => a + r.w, 0) + rooms.length + 1, floorEnd = 3 + H0, H = floorEnd + 3, N = W * H;
-      const T = { id: 'z_room_kit', img: 'stardewsim/room_kit', cols: 8, rows: 6, first: 1, tp: {} };
+      const T = { id: 'z_room_kit', img: 'stardewsim/room_kit', cols: 8, rows: 7, first: 1, tp: {} };
       const L = { Back: new Uint16Array(N), Back2: new Uint16Array(N), Buildings: new Uint16Array(N), Front: new Uint16Array(N), Front2: new Uint16Array(N) };
       const set = (l, x, y, i) => { L[l][y * W + x] = i + 1; }, clr = (l, x, y) => { L[l][y * W + x] = 0; };
       let x0 = 1; const placed = [];
@@ -679,12 +679,11 @@ export async function sdv(argv) {
       const doors = [];
       for (let k = 0; k < placed.length - 1; k++) {
         const px = placed[k].x + placed[k].w, d1 = floorEnd - 2, d2 = floorEnd - 1;
+        // solid wooden wall-top column on Buildings (no black gap, and the player draws in front of it in doorways)
         for (let y = 4; y <= floorEnd; y++) {
           if (y >= d1 && y <= d2) continue; // doorway keeps its floor
-          clr('Back', px, y); set('Buildings', px, y, 0); set('Front', px, y, 13); set('Front2', px, y, 12);
+          clr('Back', px, y); set('Buildings', px, y, y === 4 ? 49 : y === d1 - 1 ? 50 : y === d2 + 1 ? 51 : 48);
         }
-        set('Front2', px, d1 - 1, 15); // cap above the doorway
-        if (d2 + 1 <= floorEnd) set('Front2', px, d2 + 1, 14);
         doors.push(`${placed[k].n}<>${placed[k + 1].n}@${px},${d1}..${d2}`);
       }
       const [em, ex, ey] = String(fl.exit || 'Town,0,0').split(',');
