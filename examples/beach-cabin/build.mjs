@@ -13,8 +13,8 @@ import { GameMap } from '../../web/core/map.mjs';
 import { writePNG } from '../../lib/png.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const MOD = path.join(ROOT, 'mods/[CP] Beach Cabin'), WEB = path.join(ROOT, 'web/data/mods/beach-cabin'), IMG = path.join(ROOT, 'web/data/img/mods/beach-cabin');
-for (const d of [path.join(MOD, 'assets'), WEB, IMG]) fs.mkdirSync(d, { recursive: true });
+const WEB = path.join(ROOT, 'web/data/mods/beach-cabin'), IMG = path.join(ROOT, 'web/data/img/mods/beach-cabin');
+for (const d of [WEB, IMG]) fs.mkdirSync(d, { recursive: true });
 
 // placement on the Beach (checked with: sdv fit Beach 18 9 7 4 --door 21,12)
 const PLACE = { map: 'Beach', x: 18, y: 6, w: 7, h: 7 };
@@ -99,7 +99,6 @@ line 15 101 13 95 L; line 16 101 16 94 e; line 17 101 19 96 E; line 18 101 21 98
 line 92 101 90 96 e; line 93 101 94 94 E; line 94 101 97 97 L; line 95 101 96 98 e; px 94 94 E
 frect 6 102 100 3 #21000038; frect 10 105 92 2 #21000020
 `);
-writePNG(path.join(MOD, 'assets/beach_cabin_exterior.png'), ext);
 writePNG(path.join(IMG, 'beach_cabin_exterior.png'), ext);
 
 // ---------------------------------------------------------------- interior tilesheet (8 x 6 tiles)
@@ -182,7 +181,6 @@ line 64 67 111 67 B; line 64 91 111 91 u
 unmask
 line 67 70 72 65 f; line 72 65 104 65 f; line 104 65 109 70 f; line 109 70 109 89 f; line 109 89 104 94 f; line 104 94 72 94 f; line 72 94 67 89 f; line 67 89 67 70 f
 `);
-writePNG(path.join(MOD, 'assets/beach_cabin_interior.png'), sheet);
 writePNG(path.join(IMG, 'beach_cabin_interior.png'), sheet);
 
 // ---------------------------------------------------------------- maps
@@ -197,62 +195,18 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
   for (const [x, y] of DOOR) tp.Buildings[`${x},${y}`] = { Action: `Warp ${INSIDE.arrive[0]} ${INSIDE.arrive[1]} ${INSIDE.name}` };
   const j = makeMap('BeachCabin_Exterior', 7, 7, [S], { Back: new Array(N).fill(0), Buildings, Front }, {}, tp);
   fs.writeFileSync(path.join(WEB, 'BeachCabin_Exterior.json'), JSON.stringify(j));
-  fs.writeFileSync(path.join(MOD, 'assets/BeachCabin_Exterior.tmx'), mapToTmx(new GameMap(j)));
 }
 
-{ // interior 12x12
-  const W = 12, H = 12, N = W * H, T = { id: 'z_beach_cabin_interior', img: 'mods/beach-cabin/beach_cabin_interior', cols: 8, rows: 6, first: 1, tp: {} };
-  const Back = new Array(N).fill(0), Back2 = new Array(N).fill(0), Buildings = new Array(N).fill(0), Front = new Array(N).fill(0);
-  const set = (L, x, y, i) => { L[y * W + x] = i + 1; };
-  const door = 5;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const room = x >= 1 && x <= W - 2 && y >= 1 && y <= 9, exit = x === door && y >= 10;
-    if (!room && !exit) { set(Buildings, x, y, 0); continue; }
-    if (y >= 4 || exit) set(Back, x, y, y === 4 ? 3 : (x + y * 3) % 5 ? 1 : 2);
-    else set(Buildings, x, y, [5, 6, 7][y - 1]);
-  }
-  // furniture + wallpaper/floor are real game items, kept in web/data/mods/beach-cabin/mod.json (sdv place/decorate --save --mod beach-cabin)
-  for (let y = 1; y <= 9; y++) { set(Front, 0, y, 12); set(Front, W - 1, y, 13); }                                       // room frame
-  for (let x = 1; x <= W - 2; x++) { set(Front, x, 0, 15); if (x !== door) set(Front, x, 10, 14); }
-  set(Front, 0, 0, 39); set(Front, W - 1, 0, 47); set(Front, 0, 10, 23); set(Front, W - 1, 10, 31);
-  set(Front, door - 1, 10, 40); set(Front, door + 1, 10, 41); set(Front, door - 1, 11, 12); set(Front, door + 1, 11, 13);
-  const props = { Warp: `${door} 12 Beach ${PLACE.x + DOOR[0][0]} ${PLACE.y + DOOR[0][1] + 1}`, AmbientLight: '90 90 60' };
-  const j = makeMap(INSIDE.name, W, H, [T], { Back, Back2, Buildings, Front }, props, {});
-  fs.writeFileSync(path.join(WEB, 'BeachCabin.json'), JSON.stringify(j));
-  fs.writeFileSync(path.join(MOD, 'assets/BeachCabin.tmx'), mapToTmx(new GameMap(j)));
-}
-
-// ---------------------------------------------------------------- manifests (web/CLI mod + Content Patcher)
+// interior: a multi-room house generated with `sdv house` (examples/beach-cabin/house.mjs) — kept in mod.json
 const prev = fs.existsSync(path.join(WEB, 'mod.json')) ? JSON.parse(fs.readFileSync(path.join(WEB, 'mod.json'), 'utf8')) : {};
 fs.writeFileSync(path.join(WEB, 'mod.json'), JSON.stringify({
-  id: 'beach-cabin', title: 'Plaj Kabini', furniture: prev.furniture, decor: prev.decor,
-  images: { 'mods/beach-cabin/beach_cabin_exterior': [112, 112], 'mods/beach-cabin/beach_cabin_interior': [128, 96] },
-  locations: { [INSIDE.name]: 'mods/beach-cabin/BeachCabin.json' },
+  ...prev, id: 'beach-cabin', title: 'Beach House', names: { [INSIDE.name]: 'Beach House' },
+  manifest: { UniqueID: 'Waifuhtr.BeachCabin', Name: '[CP] Beach House', Version: '2.0.0', Author: 'Waifuhtr' },
+  images: { 'mods/beach-cabin/beach_cabin_exterior': [112, 112] },
+  locations: prev.locations || { [INSIDE.name]: 'mods/beach-cabin/BeachCabin.json' },
   patches: [{ target: PLACE.map, file: 'mods/beach-cabin/BeachCabin_Exterior.json', x: PLACE.x, y: PLACE.y, mode: 'Overlay' }],
 }, null, 1));
 const list = path.join(ROOT, 'web/data/mods/index.json');
 const ids = fs.existsSync(list) ? JSON.parse(fs.readFileSync(list, 'utf8')) : [];
 if (!ids.includes('beach-cabin')) fs.writeFileSync(list, JSON.stringify([...ids, 'beach-cabin']));
-fs.writeFileSync(path.join(MOD, 'manifest.json'), JSON.stringify({
-  Name: 'Beach Cabin', Author: 'Waifuhtr', Version: '1.0.2', Description: 'A small enterable cabin on the beach (made with Stardew Sim).',
-  UniqueID: 'Waifuhtr.BeachCabin', UpdateKeys: [], ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' },
-}, null, 2));
-// bake real furniture + wallpaper/floor (from mod.json) into the CP interior; seats via Data/ChairTiles
-const { bakeLocation, loadMap: simMap, sdv } = await import('../../cli/commands.mjs');
-const baked = bakeLocation(INSIDE.name, 'z_beach_cabin_furniture');
-// "bare" room (wallpaper/floor only) used when the Stardew Sim Bridge SMAPI mod places real furniture objects
-fs.writeFileSync(path.join(MOD, 'assets/BeachCabin_Bare.tmx'), mapToTmx(new GameMap(simMap(INSIDE.name).j)));
-await sdv(['ss-export', 'beach-cabin', '-o', path.join(ROOT, 'mods'), '--name', '[SS] Beach Cabin Furniture']);
-fs.writeFileSync(path.join(MOD, 'assets/BeachCabin.tmx'), mapToTmx(baked.map).replace(/source="(z_beach_cabin_interior)\.png"/, 'source="beach_cabin_interior.png"'));
-writePNG(path.join(MOD, 'assets/z_beach_cabin_furniture.png'), baked.sheet);
-fs.writeFileSync(path.join(MOD, 'content.json'), JSON.stringify({
-  Format: '2.0.0',
-  Changes: [
-    { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin.tmx', When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
-    { Action: 'Load', Target: `Maps/${INSIDE.name}`, FromFile: 'assets/BeachCabin_Bare.tmx', When: { HasMod: 'Waifuhtr.StardewSim' } },
-    { Action: 'EditData', Target: 'Data/Locations', Entries: { [INSIDE.name]: { DisplayName: 'Beach Cabin', DefaultArrivalTile: { X: INSIDE.arrive[0], Y: INSIDE.arrive[1] }, CreateOnLoad: { MapPath: `Maps/${INSIDE.name}` } } } },
-    { Action: 'EditData', Target: 'Data/ChairTiles', Entries: baked.chairTiles, When: { 'HasMod |contains=Waifuhtr.StardewSim': false } },
-    { Action: 'EditMap', Target: 'Maps/Beach', FromFile: 'assets/BeachCabin_Exterior.tmx', ToArea: { X: PLACE.x, Y: PLACE.y, Width: PLACE.w, Height: PLACE.h }, PatchMode: 'Overlay' },
-  ],
-}, null, 2));
-console.log('built beach cabin');
+console.log('built beach cabin exterior');

@@ -8,7 +8,7 @@ import { readPNG, writePNG, encodePNG } from '../lib/png.mjs';
 import { GameMap, findPath, pathToMoves, pathToWarp } from '../web/core/map.mjs';
 import { applyPatch, newProblems, applyDecor, applyStates, WORLD_STATES } from '../web/core/patch.mjs';
 import { bakeFurniture } from './bake.mjs';
-import { layout, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, wallTiles, skinsFor, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
+import { layout, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, wallTiles, skinsFor, bedSpot, NATIVE_ACTIONS, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { asciiMap, LEGEND } from '../web/core/ascii.mjs';
 import { route, incoming, mapOf, isVariant, mapWarps } from '../web/core/world.mjs';
 import { renderMap, SEASONS, seasonImg } from '../web/core/render.mjs';
@@ -29,10 +29,10 @@ export function furnData() {
   FURN = fs.existsSync(path.join(DATA, 'furniture.json')) ? JSON.parse(fs.readFileSync(path.join(DATA, 'furniture.json'), 'utf8')) : { items: {}, chairTiles: {}, wallpaper: [], flooring: [] };
   // third-party content packs imported with tools/import-mods.mjs (local only); SDV_VANILLA=1 skips them
   const tp = path.join(DATA, 'thirdparty/furniture.json');
-  if (!process.env.SDV_VANILLA && fs.existsSync(tp)) {
+  if (!process.env.SDV_VANILLA && !process.env.SDV_NO_THIRDPARTY && fs.existsSync(tp)) {
     const t = JSON.parse(fs.readFileSync(tp, 'utf8'));
     Object.assign(FURN.items, t.items); FURN.wallpaper.push(...t.wallpaper); FURN.flooring.push(...t.flooring);
-    Object.assign(FURN, { actions: t.actions, props: t.props, skins: t.skins, mods: t.mods }); Object.assign(index().textures, t.textures);
+    Object.assign(FURN, { actions: t.actions, props: t.props, skins: t.skins, mods: t.mods, buildings: t.buildings, overrides: t.overrides, machines: t.machines }); Object.assign(index().textures, t.textures);
   }
   FURN.actions = { ...(FURN.actions || {}), ...(index() && MODS.actions || {}) };
   return FURN;
@@ -52,7 +52,7 @@ function index() {
       }
       for (const p of m.patches || []) (MODS.patches[p.target] ||= []).push({ ...p, mod: id });
       for (const [mp, list] of Object.entries(m.furniture || {})) for (const f of list) (MODS.furniture[mp] ||= []).push({ ...f, mod: id });
-      for (const [mp, d] of Object.entries(m.decor || {})) MODS.decor[mp] = { ...d, mod: id };
+      for (const [mp, d] of Object.entries(m.decor || {})) MODS.decor[mp] = Array.isArray(d) ? d : { ...d, mod: id };
       for (const st of m.states || []) if (!MODS.states.includes(st)) MODS.states.push(st);
       for (const [k, v] of Object.entries(m.actions || {})) (MODS.actions ||= {})[k] = v;
     }
@@ -80,9 +80,17 @@ export function loadMap(name) {
   }
   return mapCache.get(n);
 }
+// decor = {wallpaper, floor} for the whole map, or a list of {area:[x,y,w,h], wallpaper, floor} (one per room)
 function decorMap(m, d) {
-  const fd = furnData();
-  return applyDecor(m, { wallpaper: d.wallpaper != null ? resolveDecor(d.wallpaper, 'wallpaper', fd.wallpaper) : null, floor: d.floor != null ? resolveDecor(d.floor, 'floor', fd.flooring) : null }, index().textures);
+  const fd = furnData(); let out = m, walls = 0, floors = 0;
+  const warnings = [];
+  for (const e of Array.isArray(d) ? d : [d]) {
+    const res = (spec, kind, sets) => { if (spec == null) return null; try { return resolveDecor(spec, kind, sets); } catch (err) { warnings.push(`${kind} ${spec}: ${err.message} (pack not imported?)`); return null; } };
+    out = applyDecor(out, { wallpaper: res(e.wallpaper, 'wallpaper', fd.wallpaper), floor: res(e.floor, 'floor', fd.flooring) }, index().textures, e.area || null);
+    walls += out.decorStats.walls; floors += out.decorStats.floors;
+  }
+  out.decorStats = { walls, floors }; out.decorWarnings = warnings;
+  return out;
 }
 function setFurn(m, list) { const cat = furnData().items; m.setFurniture(list, cat, furnitureBlocks(list, cat)); }
 // user edits persist in web/data/mods/<mod>/mod.json (default mod "user") so CLI, MCP and web share them
@@ -97,7 +105,7 @@ function editMod(id, fn) {
 }
 export function bakeLocation(name, sheetName) {
   const m = loadMap(name), sn = sheetName || 'z_' + m.name.replace(/\W/g, '_').toLowerCase() + '_furniture';
-  return { ...bakeFurniture(m, furnData().items, getImg, sn, { skins: furnData().skins, textures: index().textures }), sheetName: sn };
+  return { ...bakeFurniture(m, furnData().items, getImg, sn, { skins: furnData().skins, textures: index().textures, actions: furnData().actions || {} }), sheetName: sn };
 }
 // how much of a --place image is actually visible: inside the region and not hidden by Front/AlwaysFront tiles
 function placeReport(m, pl, [rx, ry, rw, rh], season) {
@@ -145,7 +153,9 @@ async function loadAnyMap(spec) {
   if (/\.json$/i.test(spec)) return new GameMap(JSON.parse(fs.readFileSync(spec, 'utf8')));
   return loadMap(spec);
 }
-function getImg(key) {
+// texture replacements from imported packs (e.g. Hojichas replaces Maps/walls_and_floors) — the game shows those everywhere
+function getImg(key0) {
+  const key = (!process.env.SDV_VANILLA && furnData().overrides?.[key0]) || key0;
   if (imgCache.has(key)) return imgCache.get(key);
   let im = null;
   const f = path.join(DATA, 'img', key + '.png');
@@ -199,16 +209,18 @@ patch <map> <patch.tmx> x y [--mode Overlay|ReplaceByLayer|Replace] [-o f.png]  
 furni find <text> [--type chair] | furni info <id|name> | furni show <id|name> [-o f.png] | furni list <map> | furni skins <id> | furni mods   game + imported mod furniture (TR/EN)
 place <map> <id|name> x y [--rot 0-3] [--skin mod:n] [--save] [--mod id]   check placement (floor/wall/overlap/doors/paths); --save keeps it
 unplace <map> x y [--mod id]       remove saved furniture covering x,y
-seats <map> | sit <map> x y [-o f.png]   seats (furniture + map benches/Data/ChairTiles), facing; sit renders the NPC seated
+seats <map> | sit <map> x y [-o f.png]   seats (furniture + map benches/Data/ChairTiles) + bed sleep spots; sit renders the NPC seated
 bake <map> -o dir [--name sheet]  export decorated map for a mod: TMX + furniture tilesheet + Data/ChairTiles entries (seats work in game)
+house <Name> --rooms A:14x8,B:12x8,... --exit Map,x,y [--entry A] [--mod id]   several rooms side by side (doorways between, exit under the entry room)
 room <Name> <w> <h> --exit Map,x,y [--mod id]   new interior location (w x h floor, 3-tile walls, frame, bottom exit)
 building <map> x y --texture key --rect sx,sy,w,h --door dx,dy --to <Loc> [--roof rows] [--mod id]   exterior from a game texture + door warp
+bld find <text> | bld info <id> | bld show <id> [-o f.png]   farm buildings from imported packs
 state <name> [--mod id] [--off]    require a world state the game sets in code (${Object.keys(WORLD_STATES).join(', ')})
 furni act <id> <TileAction|none> [--mod id]   give furniture a function in game (kitchen, Billboard, Jukebox…) via the SMAPI bridge
 cp-export <mod> -o dir             installable Content Patcher mod (+ [SS] pack: real furniture when the SMAPI bridge is installed)
 ss-export <mod> -o dir [--name "[SS] X"]   simulator mod -> Stardew Sim Bridge content pack (real furniture in game via SMAPI)
 ss-import <export.json> [--mod id]   layout exported by the SMAPI mod (exports/*.json) -> simulator mod
-walls [wallpaper|floor] [-o f.png] | decorate <map> [--wallpaper N|MoreWalls:N] [--floor N|MoreFloors:N] [--save] [--mod id]`;
+walls [wallpaper|floor] [-o f.png] [--set Id] [--from n --count n] | decorate <map> [--room R|--area x,y,w,h] [--wallpaper N|Set:N] [--floor N|Set:N] [--save] [--mod id]`;
 
 export async function sdv(argv) {
   const { pos, fl } = parseArgs(argv);
@@ -410,7 +422,8 @@ export async function sdv(argv) {
         const f = findFurn(p.slice(1).join(' '));
         const rots = [0, 1, 2, 3].slice(0, f.r === 1 ? 1 : f.r === 2 ? 2 : 4).map(r => { const l = layout(f, r); const st = furnSeats(f, { x: 0, y: 0 }, l); return `rot${r}: sprite ${l.src.w / 16}x${l.src.h / 16} @${l.src.x},${l.src.y}${l.flip ? ' flipped' : ''} box ${l.bw}x${l.bh}${st.length ? ' seats ' + st.map(s => `${s.x},${s.y}>${s.dir}`).join(' ') : ''}`; });
         const pr = { '-1': 'default (indoors)', 0: 'indoors', 1: 'outdoors', 2: 'anywhere' }[f.pr] || f.pr;
-        const extra = [furnData().actions?.[f.id] ? `function (Calcifer): ${furnData().actions[f.id].join(', ')}` : '', furnData().props?.[f.id] ? `MMAP: ${JSON.stringify(furnData().props[f.id])}` : '', f.needs ? `needs: ${f.needs}` : ''].filter(Boolean);
+        const native = NATIVE_ACTIONS[f.id] ? `function (vanilla): ${NATIVE_ACTIONS[f.id]}` : /^bed/.test(f.t) ? 'function (vanilla): sleep (BedFurniture)' : f.t === 'dresser' ? 'function (vanilla): storage' : f.t === 'fireplace' || f.t === 'torch' ? 'function (vanilla): toggle fire/light' : f.t === 'lamp' || f.t === 'sconce' || f.t === 'window' ? 'function (vanilla): light' : f.t === 'fishtank' ? 'function (vanilla): fish tank' : '';
+        const extra = [native, furnData().actions?.[f.id] ? `function (Calcifer): ${furnData().actions[f.id].join(', ')}` : '', furnData().props?.[f.id] ? `MMAP: ${JSON.stringify(furnData().props[f.id])}` : '', f.needs ? `needs: ${f.needs}` : ''].filter(Boolean);
         return { text: [fline(f), ...extra, `texture ${f.tex} sprite#${f.i}, placement ${pr}${WALL_TYPES.has(f.t) ? ', wall-mounted' : f.t === 'rug' ? ', walkable rug' : ''}${SEAT_TYPES.has(f.t) ? ', sittable' : ''}`, ...rots].join('\n') };
       }
       if (sub === 'show') {
@@ -458,7 +471,8 @@ export async function sdv(argv) {
     }
     case 'seats': {
       const m = loadMap(p[0]);
-      return { text: allSeats(m).map(s => `${s.x},${s.y} >${s.dir} ${s.name}${s.at ? ' @' + s.at : ''}`).join('\n') || 'no seats' };
+      const beds = (m.furniture || []).map(pl => { const f = furnData().items[pl.id]; const z = f && bedSpot(f, pl); return z ? `${z.x},${z.y} sleep ${fname(f)} @${pl.x},${pl.y}` : null; }).filter(Boolean);
+      return { text: [...allSeats(m).map(s => `${s.x},${s.y} >${s.dir} ${s.name}${s.at ? ' @' + s.at : ''}`), ...beds].join('\n') || 'no seats' };
     }
     case 'sit': {
       const m = loadMap(p[0]), x = +p[1], y = +p[2];
@@ -476,8 +490,10 @@ export async function sdv(argv) {
       let t = sets.map(e => `${e.Id || '(vanilla)'} ${e.Texture} ids ${e.Id ? e.Id + ':' : ''}0..${e.Count - 1}`).join('\n');
       if (fl.o) {
         const e = sets.find(x => (x.Id || '') === (fl.set || '')) || sets[0], tex = getImg(e.Texture), isF = kind === 'flooring';
-        const cw = isF ? 32 : 16, ch = isF ? 32 : 48, per = 8, n = e.Count, S = 2, img = newImg(per * (cw + 4) * S, Math.ceil(n / per) * (ch + 10) * S, [30, 30, 30, 255]);
-        for (let i = 0; i < n; i++) { const pr = tex.width / cw, sx = (i % pr) * cw, sy = (e.Id ? 0 : isF ? 336 : 0) + Math.floor(i / pr) * ch; const dx = (i % per) * (cw + 4) * S, dy = Math.floor(i / per) * (ch + 10) * S; drawText(img, i, dx + 1, dy + 1, [255, 255, 0, 255], 1); blit(img, tex, sx, sy, cw, ch, dx, dy + 8 * S, S); }
+        if (fl.set && (e.Id || '') !== fl.set) throw new Error(`unknown set ${fl.set}`);
+        const from = +fl.from || 0, n = Math.min(e.Count - from, +fl.count || 64), cw = isF ? 32 : 16, ch = isF ? 32 : 48, per = isF ? 8 : 16, S = 2, img = newImg(per * (cw + 4) * S, Math.ceil(n / per) * (ch + 10) * S, [30, 30, 30, 255]);
+        const row0 = (e.startRow ?? (e.Id ? 0 : isF ? 21 : 0)) * 16;
+        for (let k = 0; k < n; k++) { const i = from + k, pr = tex.width / cw, sx = (i % pr) * cw, sy = row0 + Math.floor(i / pr) * ch; const dx = (k % per) * (cw + 4) * S, dy = Math.floor(k / per) * (ch + 10) * S; drawText(img, i, dx + 1, dy + 1, [255, 255, 0, 255], 1); blit(img, tex, sx, sy, cw, ch, dx, dy + 8 * S, S); }
         const png = encodePNG(img); fs.writeFileSync(fl.o, png); t += `\nwrote ${fl.o}`; return { text: t, image: { path: fl.o, png } };
       }
       return { text: t + '\nuse: walls wallpaper -o w.png [--set MoreWalls] to see them' };
@@ -490,6 +506,15 @@ export async function sdv(argv) {
       fs.writeFileSync(path.join(dir, 'ChairTiles.json'), JSON.stringify(r.chairTiles, null, 1));
       const ext = [...new Set(r.map.sheets.filter(s => !s.missing && !/^Maps\//.test(s.img)).map(s => s.img))];
       return { text: `baked ${r.map.name}: ${r.tiles} furniture tiles, ${Object.keys(r.chairTiles).length / 2} seats, ${r.lights} lights -> ${dir}/\nCP: Load Maps/<name> FromFile the .tmx (ship ${r.sheetName}.png${ext.length ? ' + ' + ext.join(', ') : ''} next to it) and EditData Data/ChairTiles with ChairTiles.json` };
+    }
+    case 'bld': { // farm buildings from imported packs (Data/Buildings) — built via Robin in game, functional by their own data
+      const sub = p[0], all = Object.values(furnData().buildings || {});
+      const line = (b) => `${b.id} ${b.tr || b.n} | ${b.size.join('x')} tiles${b.indoor ? ' interior ' + b.indoor : ''}${b.skins?.length ? ' skins:' + b.skins.length : ''}${b.items ? ' furnished:' + b.items : ''} [${b.mod}]`;
+      if (sub === 'find') { const q = p.slice(1).join(' ').toLowerCase(); return { text: all.filter(b => !q || (b.id + b.n + (b.tr || '')).toLowerCase().includes(q)).map(line).join('\n') || 'no buildings (import packs with tools/import-mods.mjs)' }; }
+      const b = all.find(x => x.id === p[1] || x.n === p.slice(1).join(' ')); if (!b) throw new Error('bld find|info <id>|show <id> [-o f.png]');
+      if (sub === 'info') return { text: [line(b), b.desc ? 'desc: ' + String(b.desc).slice(0, 160) : '', `texture ${b.tex} rect ${(b.rect || []).join(',')}${b.door ? ' door ' + b.door.join(',') : ''}${b.builder ? ' builder ' + b.builder : ''}`, 'preview on a map: sdv render Farm --region ... --place web/data/img/' + b.tex + '.png@x,y'].filter(Boolean).join('\n') };
+      if (sub === 'show') { const im = getImg(b.tex); const [x, y, w, h] = b.rect || [0, 0, im.width, im.height]; const out = newImg(w * 3, h * 3); blit(out, im, x, y, w, h, 0, 0, 3); const o = fl.o || path.join(process.env.TMPDIR || '/tmp', `bld-${b.id.replace(/\W/g, '_')}.png`), png = encodePNG(out); fs.writeFileSync(o, png); return { text: `${line(b)}\nwrote ${o}`, image: { path: o, png } }; }
+      throw new Error('bld find|info|show');
     }
     case 'state': {
       if (!WORLD_STATES[p[0]]) throw new Error(`unknown state; known: ${Object.keys(WORLD_STATES).join(', ')}`);
@@ -554,7 +579,11 @@ export async function sdv(argv) {
       // real furniture only when the bridge AND every decor pack are installed; otherwise the baked copy (art + seats) is used
       const useBridge = { Name: 'UseBridge', Value: 'true', When: Object.fromEntries(['Waifuhtr.StardewSim', ...deps].map(u => [`HasMod |contains=${u}`, true])) };
       const BRIDGE = { UseBridge: true }, BAKED = { UseBridge: false };
-      const writeTmx = (map, file) => { fs.writeFileSync(path.join(A, file), mapToTmx(map)); for (const s of map.sheets) if (!/^Maps\//.test(s.img) && !s.missing) images.add(s.img); };
+      // non-vanilla tilesheets get unique file names (several packs ship e.g. "Wallpaper_texture.png")
+      const flat = (img) => /^Maps\//.test(img) ? img : img.replace(/[^\w.-]+/g, '_');
+      const writeTmx = (map, file) => {
+        const m2 = Object.create(map); m2.sheets = map.sheets.map(s => ({ ...s, img: s.missing ? s.img : flat(s.img) }));
+        fs.writeFileSync(path.join(A, file), mapToTmx(m2)); for (const s of map.sheets) if (!/^Maps\//.test(s.img) && !s.missing) images.add(s.img); };
       for (const name of Object.keys(m.locations || {})) {
         const lm = loadMap(name), bare = new GameMap(lm.j), baked = bakeLocation(name);
         writeTmx(bare, `${name}_Bare.tmx`); writeTmx(baked.map, `${name}.tmx`); writePNG(path.join(A, baked.sheetName + '.png'), baked.sheet);
@@ -570,9 +599,9 @@ export async function sdv(argv) {
         writeTmx(pm, f);
         changes.push({ Action: 'EditMap', Target: `Maps/${pt.target}`, FromFile: `assets/${f}`, ToArea: { X: pt.x, Y: pt.y, Width: pm.w, Height: pm.h }, PatchMode: pt.mode || 'ReplaceByLayer' });
       }
-      for (const img of images) { const src = path.join(DATA, 'img', img + '.png'); if (fs.existsSync(src)) fs.copyFileSync(src, path.join(A, img.split('/').pop() + '.png')); }
+      for (const img of images) { const src = path.join(DATA, 'img', img + '.png'); if (fs.existsSync(src)) fs.copyFileSync(src, path.join(A, flat(img) + '.png')); }
       if ((m.states || []).length) notes.push(`needs in-game progress: ${m.states.join(', ')} (e.g. repair the beach bridge)`);
-      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.2', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid,
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ Name: `[CP] ${title}`, Author: 'Stardew Sim', Version: '1.0.2', Description: `Made with Stardew Sim. ${notes.join(' ')}`.trim(), UniqueID: uid, ...(m.manifest || {}),
         ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' }, Dependencies: [...deps.map(u => ({ UniqueID: u, IsRequired: false })), { UniqueID: 'Waifuhtr.StardewSim', IsRequired: false }] }, null, 2));
       fs.writeFileSync(path.join(dir, 'content.json'), JSON.stringify({ Format: '2.0.0', DynamicTokens: [{ Name: 'UseBridge', Value: 'false' }, useBridge], Changes: changes }, null, 2));
       const ss = await sdv(['ss-export', id, '-o', fl.o || 'dist', '--name', `[SS] ${title}`]);
@@ -584,7 +613,7 @@ export async function sdv(argv) {
       const m = JSON.parse(fs.readFileSync(f, 'utf8')), fd = furnData(), locs = {}, actions = {};
       const names = new Set([...Object.keys(m.furniture || {}), ...Object.keys(m.decor || {})]);
       for (const n of names) {
-        const d = m.decor?.[n] || {};
+        const d = Array.isArray(m.decor?.[n]) ? {} : m.decor?.[n] || {};
         locs[n] = { Wallpaper: d.wallpaper != null && !String(d.wallpaper).includes(':') ? String(d.wallpaper) : undefined, Floor: d.floor != null && !String(d.floor).includes(':') ? String(d.floor) : undefined,
           Furniture: (m.furniture?.[n] || []).map(pl => ({ Id: pl.id, X: pl.x, Y: pl.y, Rotation: pl.rot || 0, Skin: pl.skin })) };
         for (const pl of m.furniture?.[n] || []) if (m.actions?.[pl.id] || fd.actions?.[pl.id]) actions[pl.id] = m.actions?.[pl.id] || fd.actions[pl.id];
@@ -607,13 +636,68 @@ export async function sdv(argv) {
     }
     case 'decorate': {
       let m = loadMap(p[0]);
-      if (fl.wallpaper == null && fl.floor == null) return { text: `wall tiles: ${wallTiles(m).length}; pass --wallpaper N and/or --floor N (see: sdv walls)` };
-      const d = { wallpaper: fl.wallpaper != null ? String(fl.wallpaper) : undefined, floor: fl.floor != null ? String(fl.floor) : undefined };
+      if (fl.wallpaper == null && fl.floor == null) return { text: `wall tiles: ${wallTiles(m).length}; pass --wallpaper N and/or --floor N [--area x,y,w,h] (see: sdv walls)` };
+      const area = fl.area ? nums(fl.area) : (fl.room ? (m.props.StardewSimRooms || '').split(';').map(r => r.split(':')).find(r => r[0] === fl.room)?.[1]?.split(',').map(Number) : null);
+      if (fl.room && !area) throw new Error(`no room ${fl.room} in ${m.name} (rooms: ${(m.props.StardewSimRooms || '').split(';').map(r => r.split(':')[0]).join(', ')})`);
+      const d = { ...(area ? { area } : {}), wallpaper: fl.wallpaper != null ? String(fl.wallpaper) : undefined, floor: fl.floor != null ? String(fl.floor) : undefined };
       const out = decorMap(m, d);
-      let t = `${m.name}: ${out.decorStats.walls} wall tiles, ${out.decorStats.floors} floor tiles`;
-      if (fl.save) { editMod(fl.mod || 'user', mm => { (mm.decor ||= {})[m.name] = { ...(mm.decor?.[m.name] || {}), ...Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)) }; }); t += ` — saved to mods/${fl.mod || 'user'}`; }
-      if (fl.o) { setFurn(out, m.furniture || []); const img = renderMap(out, { getImg, textures: ix.textures, scale: +fl.scale || 2, furniture: out.furniture, catalog: furnData().items, skins: furnData().skins }); const png = encodePNG(img); fs.writeFileSync(fl.o, png); t += `\nwrote ${fl.o}`; return { text: t, image: { path: fl.o, png } }; }
+      if (out.decorWarnings.length) throw new Error(out.decorWarnings.join('; '));
+      let t = `${m.name}${area ? ' area ' + area.join(',') : ''}: ${out.decorStats.walls} wall tiles, ${out.decorStats.floors} floor tiles`;
+      if (fl.save) {
+        editMod(fl.mod || 'user', mm => {
+          mm.decor ||= {};
+          if (area) { let list = mm.decor[m.name]; list = Array.isArray(list) ? list : list ? [list] : []; const k = list.findIndex(e => (e.area || []).join() === area.join()); const old = k >= 0 ? list[k] : {}; const e = { ...old, ...Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)) }; if (k >= 0) list[k] = e; else list.push(e); mm.decor[m.name] = list; }
+          else mm.decor[m.name] = { ...(Array.isArray(mm.decor[m.name]) ? {} : mm.decor[m.name] || {}), ...Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)) };
+        });
+        t += ` — saved to mods/${fl.mod || 'user'}`;
+      }
+      if (fl.o) { setFurn(out, m.furniture || []); const img = renderMap(out, { getImg, textures: ix.textures, scale: +fl.scale || 2, region: area ? [area[0], Math.max(0, area[1] - 1), area[2], area[3] + 2] : null, furniture: out.furniture, catalog: furnData().items, skins: furnData().skins }); const png = encodePNG(img); fs.writeFileSync(fl.o, png); t += `\nwrote ${fl.o}`; return { text: t, image: { path: fl.o, png } }; }
       return { text: t };
+    }
+    case 'house': { // several rooms side by side in one location, doorways in the partitions, exit under the entry room
+      const name = p[0], id = fl.mod || 'user';
+      const rooms = String(fl.rooms || '').split(',').map(r => { const [n, wh] = r.split(':'); const [w, h] = wh.split('x').map(Number); return { n, w, h }; });
+      if (!name || !rooms.length || rooms.some(r => !r.w || !r.h)) throw new Error('house <Name> --rooms Hall:14x8,Kitchen:12x8 --exit Map,x,y [--entry Hall] [--mod id]');
+      const H0 = Math.max(...rooms.map(r => r.h)), W = rooms.reduce((a, r) => a + r.w, 0) + rooms.length + 1, floorEnd = 3 + H0, H = floorEnd + 3, N = W * H;
+      const T = { id: 'z_room_kit', img: 'stardewsim/room_kit', cols: 8, rows: 6, first: 1, tp: {} };
+      const L = { Back: new Uint16Array(N), Back2: new Uint16Array(N), Buildings: new Uint16Array(N), Front: new Uint16Array(N), Front2: new Uint16Array(N) };
+      const set = (l, x, y, i) => { L[l][y * W + x] = i + 1; }, clr = (l, x, y) => { L[l][y * W + x] = 0; };
+      let x0 = 1; const placed = [];
+      for (const r of rooms) { placed.push({ ...r, x: x0, y: 4 }); x0 += r.w + 1; }
+      const entry = placed.find(r => r.n === (fl.entry || placed[0].n)) || placed[0], cx = entry.x + Math.floor(entry.w / 2);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const inside = x >= 1 && x <= W - 2 && y >= 1 && y <= floorEnd, exit = x === cx && y > floorEnd;
+        if (!inside && !exit) { set('Buildings', x, y, 0); continue; }
+        if (y >= 4 || exit) set('Back', x, y, y === 4 ? 3 : (x + y * 3) % 5 ? 1 : 2); else set('Buildings', x, y, [5, 6, 7][y - 1]);
+      }
+      // outer frame
+      for (let y = 1; y <= floorEnd; y++) { set('Front', 0, y, 12); set('Front', W - 1, y, 13); }
+      for (let x = 1; x <= W - 2; x++) { set('Front', x, 0, 15); if (x !== cx) set('Front', x, floorEnd + 1, 14); }
+      set('Front', 0, 0, 39); set('Front', W - 1, 0, 47); set('Front', 0, floorEnd + 1, 23); set('Front', W - 1, floorEnd + 1, 31);
+      set('Front', cx - 1, floorEnd + 1, 40); set('Front', cx + 1, floorEnd + 1, 41); for (let y = floorEnd + 2; y < H; y++) { set('Front', cx - 1, y, 12); set('Front', cx + 1, y, 13); }
+      // partitions between rooms (void column with rims both sides) and a 2-tile doorway near the bottom
+      const doors = [];
+      for (let k = 0; k < placed.length - 1; k++) {
+        const px = placed[k].x + placed[k].w, d1 = floorEnd - 2, d2 = floorEnd - 1;
+        for (let y = 4; y <= floorEnd; y++) {
+          if (y >= d1 && y <= d2) continue; // doorway keeps its floor
+          clr('Back', px, y); set('Buildings', px, y, 0); set('Front', px, y, 13); set('Front2', px, y, 12);
+        }
+        set('Front2', px, d1 - 1, 15); // cap above the doorway
+        if (d2 + 1 <= floorEnd) set('Front2', px, d2 + 1, 14);
+        doors.push(`${placed[k].n}<>${placed[k + 1].n}@${px},${d1}..${d2}`);
+      }
+      const [em, ex, ey] = String(fl.exit || 'Town,0,0').split(',');
+      const props = { Warp: `${cx} ${H} ${em} ${+ex} ${+ey}`, StardewSimArrival: `${cx} ${floorEnd}`, StardewSimRooms: placed.map(r => `${r.n}:${r.x},1,${r.w},${floorEnd}`).join(';') };
+      const j = { name, w: W, h: H, props, sheets: [T], anim: {}, tp: {}, layers: Object.entries(L).map(([lid, a]) => ({ id: lid, vis: true, data: Buffer.from(a.buffer).toString('base64') })) };
+      const file = `mods/${id}/${name}.json`;
+      fs.mkdirSync(path.join(DATA, 'mods', id), { recursive: true }); fs.writeFileSync(path.join(DATA, file), JSON.stringify(j));
+      // re-point doors in this mod that lead here (e.g. the exterior patch) at the new arrival tile
+      editMod(id, mm => { (mm.locations ||= {})[name] = file;
+        for (const pt of mm.patches || []) { const pf = path.join(DATA, pt.file); if (!fs.existsSync(pf)) continue; const pj = JSON.parse(fs.readFileSync(pf, 'utf8')); let ch = false;
+          for (const t of Object.values(pj.tp || {})) for (const pr of Object.values(t)) if (pr.Action && new RegExp(`^(Warp|LockedDoorWarp) \\d+ \\d+ ${name}\\b`).test(pr.Action)) { const a = pr.Action.split(' '); a[1] = cx; a[2] = floorEnd; pr.Action = a.join(' '); ch = true; }
+          if (ch) fs.writeFileSync(pf, JSON.stringify(pj)); } });
+      return { text: [`house ${name} ${W}x${H}: ${placed.map(r => `${r.n} x${r.x}..${r.x + r.w - 1} (floor y4..${floorEnd}, walls y1..3)`).join('; ')}`, `doorways: ${doors.join(' ')}`, `arrival ${cx},${floorEnd}; exit ${cx},${H} -> ${em} ${ex},${ey}`, `decorate per room: sdv decorate ${name} --room <Room> --wallpaper N --floor N --save --mod ${id}`].join('\n') };
     }
     default: throw new Error(`unknown command ${cmd}\n${SDV_HELP}`);
   }

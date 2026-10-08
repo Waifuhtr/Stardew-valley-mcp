@@ -3,10 +3,11 @@
 //  seat "front" sprites -> Front2. Overlaps are composited, identical tiles deduped into one tilesheet PNG.
 //  Seats become Data/ChairTiles entries (the vanilla mechanism used by map benches), lamps become Light map properties.
 import { GameMap } from '../web/core/map.mjs';
-import { layout, drawPos, seats as furnSeats, skinSource, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
+import { layout, drawPos, seats as furnSeats, skinSource, isBed, bedSpot, NATIVE_ACTIONS, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { newImg, blit } from '../web/core/raster.mjs';
 
-export function bakeFurniture(map, catalog, getImg, sheetName, { skins, textures } = {}) {
+export function bakeFurniture(map, catalog, getImg, sheetName, { skins, textures, actions = {} } = {}) {
+  const tileProps = { Buildings: {}, Back: {} }; // functions kept without the SMAPI bridge: map tile actions + beds
   const cells = new Map(); // "layer|x|y" -> 16x16 img
   const cell = (L, x, y) => { const k = `${L}|${x}|${y}`; if (!cells.has(k)) cells.set(k, newImg(16, 16)); return cells.get(k); };
   const items = (map.furniture || []).map(pl => ({ pl, f: catalog[pl.id] })).filter(o => o.f)
@@ -30,7 +31,12 @@ export function bakeFurniture(map, catalog, getImg, sheetName, { skins, textures
     const pos = drawPos(pl, lay);
     if (f.t === 'rug') stamp(tex, lay, pos, () => 'Back2');
     else if (WALL_TYPES.has(f.t)) stamp(tex, lay, pos, () => 'Buildings2');
+    else if (isBed(f)) stamp(tex, lay, pos, (ty) => (ty === pl.y + 1 ? 'Front' : ty >= pl.y && ty < pl.y + lay.bh ? 'Buildings' : 'Front')); // you lie in row 1
     else stamp(tex, lay, pos, (ty) => (ty >= pl.y && ty < pl.y + lay.bh ? 'Buildings' : 'Front'));
+    const act = actions[f.id]?.[0] || NATIVE_ACTIONS[f.id];
+    if (act) for (let y = 0; y < lay.bh; y++) for (let x = 0; x < lay.bw; x++) tileProps.Buildings[`${pl.x + x},${pl.y + y}`] = { Action: act };
+    const z = bedSpot(f, pl);
+    if (z) { for (let x = 0; x < lay.bw; x++) tileProps.Back[`${pl.x + x},${pl.y + 1}`] = { Bed: 'T' }; tileProps.Back[`${z.x},${z.y}`] = { Bed: 'T', TouchAction: 'Sleep' }; }
     if (SEAT_TYPES.has(f.t)) {
       const ft = getImg(f.tex + 'Front'); if (ft) stamp(ft, lay, pos, () => 'Front2');
       for (const s of furnSeats(f, pl, lay)) chairs.push({ x: Math.floor(s.x), y: s.y, dir: s.dir, type: f.t === 'chair' ? 'chair' : 'bench' });
@@ -64,7 +70,9 @@ export function bakeFurniture(map, catalog, getImg, sheetName, { skins, textures
   }
   const props = { ...map.props };
   if (lights.length) props.Light = ((props.Light || '') + ' ' + lights.join(' ')).trim();
-  const j = { name: map.name, w: map.w, h: map.h, props, sheets: [...map.sheets.map(s => ({ ...s })), sh], anim: map.anim, tp: map.tp,
+  const tp = structuredClone(map.tp || {});
+  for (const [L, t] of Object.entries(tileProps)) for (const [xy, pr] of Object.entries(t)) (tp[L] ||= {})[xy] = { ...(tp[L]?.[xy] || {}), ...pr };
+  const j = { name: map.name, w: map.w, h: map.h, props, sheets: [...map.sheets.map(s => ({ ...s })), sh], anim: map.anim, tp,
     layers: order.map(id => ({ id, vis: true, arr: layers[id] })) };
   return { map: new GameMap(j), sheet, chairTiles, tiles: uniq.length, lights: lights.length };
 }

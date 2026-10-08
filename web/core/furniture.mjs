@@ -15,13 +15,14 @@ export const DIR_NAMES = ['up', 'right', 'down', 'left'];
 // Data/Furniture line -> catalog entry
 export function parseFurniture(id, line, names = {}, namesTr = {}) {
   const p = line.split('/');
-  const type = p[1];
+  // the game lower-cases the type ("Bench" == "bench"); unknown names behave as "other"
+  const raw = (p[1] || '').trim().toLowerCase(), type = TYPES.includes(raw) || /^bed|fishtank|randomized_plant/.test(raw) ? raw : 'other';
   const size = (s, def) => (s && s !== '-1' ? s.split(' ').map(Number) : def || [1, 2]);
   const key = /Strings\\+Furniture:(\w+)/.exec(p[7] || '')?.[1];
   const tex = (p[9] || 'TileSheets\\furniture').replace(/\\+/g, '/');
   const sprite = p[8] !== undefined && p[8] !== '' ? +p[8] : +id;
   return { id, n: (key && names[key]) || p[0], tr: key && namesTr[key] || undefined, t: type, s: size(p[2], DEF_SPRITE[type]), b: size(p[3], DEF_BOX[type] || [1, 1]),
-    r: +p[4] || 1, p: +p[5] || 0, pr: +p[6], tex, i: isNaN(sprite) ? 0 : sprite, off: p[10] === 'true' || undefined };
+    r: +p[4] || 1, p: +p[5] || 0, pr: +p[6], tex, i: isNaN(sprite) ? 0 : sprite, off: p[10] === 'true' || undefined, ...(raw !== type ? { rawType: p[1] } : {}) };
 }
 
 // sprite rect (px) + bounding box (tiles) + flip for a rotation — same math as Furniture.updateRotation
@@ -138,8 +139,8 @@ export function furnitureBlocks(placed, catalog) {
   const s = new Set();
   for (const p of placed) {
     const f = catalog[p.id]; if (!f || f.t === 'rug' || WALL_TYPES.has(f.t)) continue;
-    const l = layout(f, p.rot || 0);
-    for (let y = 0; y < l.bh; y++) for (let x = 0; x < l.bw; x++) s.add(`${p.x + x},${p.y + y}`);
+    const l = layout(f, p.rot || 0), bed = isBed(f);
+    for (let y = 0; y < l.bh; y++) for (let x = 0; x < l.bw; x++) if (!(bed && y === 1)) s.add(`${p.x + x},${p.y + y}`); // BedFurniture: the 2nd row is walkable (you get into bed there)
   }
   return s;
 }
@@ -155,7 +156,7 @@ export function resolveDecor(spec, kind, extra = []) {
   const e = extra.find(x => x.Id === set);
   if (!e) throw new Error(`unknown set ${set}`);
   if (e.IsFlooring !== (kind === 'floor')) throw new Error(`${set} is not a ${kind} set`);
-  return { tex: e.Texture, n: +num, startRow: 0, max: e.Count };
+  return { tex: e.Texture, n: +num, startRow: e.startRow ?? 0, max: e.Count };
 }
 
 // Alternative Textures skins: skins[itemId or English name] -> [{mod,w,h,files[],single,variations[]}]
@@ -170,3 +171,10 @@ export function skinSource(f, lay, spec, skins, textures = {}) {
   else { key = s.files[Math.min(v, s.files.length - 1)]; }
   return { key, src: { x: cx + lay.src.x - lay.base.x, y: cy + lay.src.y - lay.base.y, w: lay.src.w, h: lay.src.h } };
 }
+
+// beds (BedFurniture): row 1 of the bounding box is walkable; Back props Bed=T there and TouchAction Sleep at x+1
+export const isBed = (f) => /^bed/.test(f.t);
+export function bedSpot(f, pl) { if (!isBed(f) || f.t === 'bed child') return null; return { x: pl.x + 1, y: pl.y + 1 }; }
+// what the game does when the furniture is clicked, for items that work natively (Furniture.checkForAction)
+export const NATIVE_ACTIONS = { RetroCatalogue: 'OpenShop RetroFurnitureCatalogue', TrashCatalogue: 'OpenShop TrashFurnitureCatalogue', JunimoCatalogue: 'OpenShop JunimoFurnitureCatalogue',
+  WizardCatalogue: 'OpenShop WizardFurnitureCatalogue', JojaCatalogue: 'OpenShop JojaFurnitureCatalogue', 1308: 'OpenShop Catalogue', 1226: 'OpenShop Furniture Catalogue', 1402: 'Billboard' };

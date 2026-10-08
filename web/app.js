@@ -43,8 +43,10 @@ async function getMap(name) {
   const m = new GameMap(j);
   let out = applyStates(m, S.states || []);
   for (const p of S.modPatches[name] || []) out = applyPatch(out, new GameMap(p.json), p.x, p.y, p.mode || 'ReplaceByLayer');
-  const dec = { ...(S.modDecor[name] || {}), ...(S.userDecor[name] || {}) };
-  if (S.furn && (dec.wallpaper != null || dec.floor != null)) out = applyDecor(out, { wallpaper: dec.wallpaper != null ? resolveDecor(dec.wallpaper, 'wallpaper', S.furn.wallpaper) : null, floor: dec.floor != null ? resolveDecor(dec.floor, 'floor', S.furn.flooring) : null }, S.index.textures);
+  const md = S.modDecor[name], decs = [...(Array.isArray(md) ? md : md ? [md] : []), ...(S.userDecor[name] ? [S.userDecor[name]] : [])];
+  if (S.furn) for (const dec of decs) if (dec.wallpaper != null || dec.floor != null) {
+    try { out = applyDecor(out, { wallpaper: dec.wallpaper != null ? resolveDecor(dec.wallpaper, 'wallpaper', S.furn.wallpaper) : null, floor: dec.floor != null ? resolveDecor(dec.floor, 'floor', S.furn.flooring) : null }, S.index.textures, dec.area || null); } catch (e) { console.warn(e.message); }
+  }
   for (const w of S.extraWarps[name] || []) out.warps.push(w);
   setFurn(out);
   return out;
@@ -58,7 +60,7 @@ function setFurn(m) {
 }
 async function prepFurnImgs(m) {
   const out = {};
-  for (const o of furnItems(m)) { out[o.tex] ||= await loadImage(o.tex); out[o.f.tex] ||= await loadImage(o.f.tex); if (SEAT_TYPES.has(o.f.t)) out[o.f.tex + 'Front'] ||= await loadImage(o.f.tex + 'Front'); }
+  for (const o of furnItems(m)) { out[o.tex] ||= await loadImage(o.tex); out[o.f.tex] ||= await loadImage(o.f.tex); if (SEAT_TYPES.has(o.f.t) && S.index.textures[o.f.tex + 'Front']) out[o.f.tex + 'Front'] ||= await loadImage(o.f.tex + 'Front'); }
   S.furnImgs = out;
 }
 const known = (name) => !!S.index.maps[mapOf(name, S.index.maps)];
@@ -541,6 +543,7 @@ async function loadMods() {
   try { // locally imported third-party packs (tools/import-mods.mjs; not published)
     const t = await (await fetch('data/thirdparty/furniture.json')).json();
     Object.assign(S.furn.items, t.items); S.furn.wallpaper.push(...t.wallpaper); S.furn.flooring.push(...t.flooring); S.furn.skins = t.skins; Object.assign(S.index.textures, t.textures);
+    for (const [k, v] of Object.entries(t.overrides || {})) S.customImgs[k] = `data/img/${v}.png`; // e.g. Hojichas replaces walls_and_floors
   } catch {}
   await loadMods();
   initFurnUI();

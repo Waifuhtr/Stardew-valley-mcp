@@ -8,6 +8,8 @@ export function checkMap(map, { index, loadMap, extraLocations = [] } = {}) {
   const ids = map.layerOrder;
   for (const req of ['Back', 'Buildings', 'Front']) if (!ids.includes(req)) E.push(`missing layer ${req}`);
   for (const id of ids) if (!/^(Back|Buildings|Front|AlwaysFront|Paths)\d*$/.test(id)) Wn.push(`layer "${id}" is not a game layer name (ignored by the game unless numbered like Back2)`);
+  const dupIds = map.sheets.map(s => s.id).filter((id, i, a) => a.indexOf(id) !== i);
+  if (dupIds.length) E.push(`duplicate tilesheet ids (xTile needs unique ids): ${[...new Set(dupIds)].join(', ')}`);
   for (const sh of map.sheets) {
     if (sh.missing) Wn.push(`tilesheet "${sh.id}" image "${sh.src || sh.img}" is not vanilla: ship it in your mod (Maps/ folder or assets/) and keep the name`);
     if (/^(summer|fall|winter)_/.test(sh.img.split('/').pop())) Wn.push(`tilesheet ${sh.id} uses ${sh.img}: use the spring_ version, the game swaps seasons automatically`);

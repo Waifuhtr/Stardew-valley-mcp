@@ -105,12 +105,24 @@ boxes and seats follow the game's own rules (Furniture.updateRotation / GetSeatP
 - `sdv walls wallpaper|floor` + `-o` swatch → `sdv decorate <map> --wallpaper 104 --floor 18 [--save]`
   (sets: plain number = vanilla walls_and_floors, `MoreWalls:N` / `MoreFloors:N`).
 - `sdv seats <map>` (furniture + vanilla map benches), `sdv sit <map> x y` renders the NPC seated (front sprite over it).
-- ascii shows `f` furniture, `h` seat. Rugs/wall items don't block.
-- Shipping: `sdv bake <map> -o dir` → TMX + furniture tilesheet + `ChairTiles.json` (seats work in game via
-  `EditData Data/ChairTiles`, the mechanism vanilla benches use; lamps/windows add `Light`). Beds baked this way
-  are decoration only (no sleeping) — that needs real Furniture objects (SMAPI mod).
+- ascii shows `f` furniture, `h` seat, `z` bed sleep spot. Rugs/wall items don't block; beds block except their 2nd row
+  (that's where you get in — BedFurniture.IntersectsForCollision).
+- Functions (verified in the decompiled game): seats (chair/bench/couch/armchair), beds sleep anywhere, dressers =
+  storage, fireplaces/torches toggle, lamps/windows light, vanilla catalogues open their shop (Junimo/Wizard/Retro/
+  Trash/Joja/1308/1226), 1402 calendar → Billboard, Cauldron bubbles. Pack items only via data: Calcifer
+  `FurnitureActions` (`furni info` shows `function (Calcifer)`), MMAP TVs/mirrors need those mods. Map tile actions
+  `kitchen`/`Kitchen`, `Billboard`, `Jukebox`, `OpenShop <id>` are all vanilla. `furni info` prints the function.
+- Shipping: `sdv bake <map> -o dir` → TMX + furniture tilesheet + `ChairTiles.json` (seats via `Data/ChairTiles`, like
+  vanilla benches), lamps/windows → `Light`, functional items → tile `Action` (shops, kitchen, Billboard…), beds →
+  Back `Bed`/`TouchAction Sleep` (how BedFurniture marks its tiles). Storage/fire toggles need the SMAPI bridge.
 
 ## New buildings, interiors and shipping them
+
+- `sdv house <Name> --rooms Hall:14x8,Bakery:12x8,... --entry Hall --exit Map,x,y --mod id` → one location, rooms side
+  by side (wooden pillar + framed partition, 2-tile doorway near the bottom), exit under the entry room. The output lists
+  every room's x range. Keep doorway tiles (rows floorEnd-2..floorEnd-1 next to each partition) free when placing.
+  `sdv decorate <Name> --room Bakery --wallpaper 93 --floor 23 --save --mod id` decorates one room.
+  Full example: `examples/beach-cabin/house.mjs` (8 themed rooms, 114 items, every placement checked).
 
 - `sdv room <Name> <w> <h> --exit Map,x,y --mod id` → new interior (w×h floor, 3-tile walls, frame, bottom exit).
 - `sdv building <map> x y --texture "Buildings/Beach Cabin" --rect 160,0,80,112 --door 2,5 --to <Name> --mod id`
@@ -125,7 +137,7 @@ boxes and seats follow the game's own rules (Furniture.updateRotation / GetSeatP
 
 ## Stardew Sim Bridge (SMAPI, `smapi/StardewSim`, Android SMAPI 4.3 / game 1.6.15, .NET 9, no Harmony)
 
-Places `[SS]` layouts as real furniture once per save (player may move/remove them), applies wallpaper/floor in
+Places `[SS]` layouts as real furniture once per save (beds sleepable, catalogues/storage native) (player may move/remove them), applies wallpaper/floor in
 decoratable locations, performs furniture tile actions when Calcifer isn't installed, exports the current room + home
 to `exports/*.json` on save. Build: `node tools/build-smapi.mjs` (needs .NET 9 SDK + game DLLs in ~/sdv-libs).
 
@@ -133,7 +145,10 @@ to `exports/*.json` on save. Build: `node tools/build-smapi.mjs` (needs .NET 9 S
 
 `node tools/import-mods.mjs <folder of mod folders>` imports CP furniture packs (Data/Furniture, textures, i18n,
 Calcifer/MMAP/SpaceCore extras) and Alternative Textures packs (skins: `furni skins <id>`, `place --skin pack:n`;
-AT wallpapers become `decorate --wallpaper AT.<pack>:n`). Output stays local (`web/data/thirdparty`, gitignored —
+AT wallpapers become `decorate --wallpaper AT.<pack>:n`; CP `Data/AdditionalWallpaperFlooring` sets use their Id;
+packs that replace a vanilla sheet (Hojichas → `Maps/walls_and_floors`) override that texture everywhere, like the
+game; `ConfigSchema` defaults/`When`/`LocalTokens`/`EditImage` are evaluated; `Data/Buildings` → `sdv bld find`).
+`walls wallpaper --set <Id> --from n --count n -o w.png` shows a set. Output stays local (`web/data/thirdparty`, gitignored —
 redistribution needs the authors' permission). `furni mods` lists what's imported; modded items show `[modId]`.
 
 ## Mods in the simulator
