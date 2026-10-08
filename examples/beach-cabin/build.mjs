@@ -192,7 +192,9 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
   const N = 49, Front = new Array(N).fill(0), Buildings = new Array(N).fill(0);
   for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) (y < 3 ? Front : Buildings)[y * 7 + x] = 1 + y * 7 + x;
   const tp = { Buildings: {} };
-  for (const [x, y] of DOOR) tp.Buildings[`${x},${y}`] = { Action: `Warp ${INSIDE.arrive[0]} ${INSIDE.arrive[1]} ${INSIDE.name}` };
+  // house.mjs moves the entry (StardewSimArrival); keep pointing the door at it when only the exterior is rebuilt
+  const loc = path.join(WEB, INSIDE.name + '.json'), arrive = fs.existsSync(loc) && JSON.parse(fs.readFileSync(loc, 'utf8')).props?.StardewSimArrival?.split(' ').map(Number) || INSIDE.arrive;
+  for (const [x, y] of DOOR) tp.Buildings[`${x},${y}`] = { Action: `Warp ${arrive[0]} ${arrive[1]} ${INSIDE.name}` };
   const j = makeMap('BeachCabin_Exterior', 7, 7, [S], { Back: new Array(N).fill(0), Buildings, Front }, {}, tp);
   fs.writeFileSync(path.join(WEB, 'BeachCabin_Exterior.json'), JSON.stringify(j));
 }
@@ -201,7 +203,7 @@ const makeMap = (name, w, h, sheets, layers, props = {}, tp = {}) => ({ name, w,
 const prev = fs.existsSync(path.join(WEB, 'mod.json')) ? JSON.parse(fs.readFileSync(path.join(WEB, 'mod.json'), 'utf8')) : {};
 fs.writeFileSync(path.join(WEB, 'mod.json'), JSON.stringify({
   ...prev, id: 'beach-cabin', title: 'Beach House', names: { [INSIDE.name]: 'Beach House' },
-  manifest: { UniqueID: 'Waifuhtr.BeachCabin', Name: '[CP] Beach House', Version: '2.0.0', Author: 'Waifuhtr' },
+  manifest: { UniqueID: 'Waifuhtr.BeachCabin', Name: '[CP] Beach House', Version: '2.1.0', Author: 'Waifuhtr' },
   images: { 'mods/beach-cabin/beach_cabin_exterior': [112, 112] },
   locations: prev.locations || { [INSIDE.name]: 'mods/beach-cabin/BeachCabin.json' },
   patches: [{ target: PLACE.map, file: 'mods/beach-cabin/BeachCabin_Exterior.json', x: PLACE.x, y: PLACE.y, mode: 'Overlay' }],

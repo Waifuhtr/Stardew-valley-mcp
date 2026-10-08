@@ -8,6 +8,7 @@ import { readPNG, writePNG, encodePNG } from '../lib/png.mjs';
 import { GameMap, findPath, pathToMoves, pathToWarp } from '../web/core/map.mjs';
 import { applyPatch, newProblems, applyDecor, applyStates, WORLD_STATES } from '../web/core/patch.mjs';
 import { bakeFurniture } from './bake.mjs';
+import { bundleFurniture, bundleKey } from './bundle.mjs';
 import { layout, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, wallTiles, skinsFor, bedSpot, NATIVE_ACTIONS, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { asciiMap, LEGEND } from '../web/core/ascii.mjs';
 import { route, incoming, mapOf, isVariant, mapWarps } from '../web/core/world.mjs';
@@ -103,9 +104,9 @@ function editMod(id, fn) {
   if (!ids.includes(id)) fs.writeFileSync(list, JSON.stringify([...ids, id]));
   INDEX = null; mapCache.clear(); for (const k of Object.keys(MODS)) MODS[k] = k === 'states' ? [] : {}; FURN = null;
 }
-export function bakeLocation(name, sheetName) {
+export function bakeLocation(name, sheetName, actions) {
   const m = loadMap(name), sn = sheetName || 'z_' + m.name.replace(/\W/g, '_').toLowerCase() + '_furniture';
-  return { ...bakeFurniture(m, furnData().items, getImg, sn, { skins: furnData().skins, textures: index().textures, actions: furnData().actions || {} }), sheetName: sn };
+  return { ...bakeFurniture(m, furnData().items, getImg, sn, { skins: furnData().skins, textures: index().textures, actions: actions || furnData().actions || {} }), sheetName: sn };
 }
 // how much of a --place image is actually visible: inside the region and not hidden by Front/AlwaysFront tiles
 function placeReport(m, pl, [rx, ry, rw, rh], season) {
@@ -217,7 +218,8 @@ building <map> x y --texture key --rect sx,sy,w,h --door dx,dy --to <Loc> [--roo
 bld find <text> | bld info <id> | bld show <id> [-o f.png]   farm buildings from imported packs
 state <name> [--mod id] [--off]    require a world state the game sets in code (${Object.keys(WORLD_STATES).join(', ')})
 furni act <id> <TileAction|none> [--mod id]   give furniture a function in game (kitchen, Billboard, Jukebox…) via the SMAPI bridge
-cp-export <mod> -o dir             installable Content Patcher mod (+ [SS] pack: real furniture when the SMAPI bridge is installed)
+cp-export <mod> -o dir [--no-bundle]  installable Content Patcher mod (+ [SS] pack: real furniture when the SMAPI bridge is installed);
+                                   decor-pack furniture/skins/catalogues are copied in (personal test build) unless --no-bundle
 ss-export <mod> -o dir [--name "[SS] X"]   simulator mod -> Stardew Sim Bridge content pack (real furniture in game via SMAPI)
 ss-import <export.json> [--mod id]   layout exported by the SMAPI mod (exports/*.json) -> simulator mod
 walls [wallpaper|floor] [-o f.png] [--set Id] [--from n --count n] | decorate <map> [--room R|--area x,y,w,h] [--wallpaper N|Set:N] [--floor N|Set:N] [--save] [--mod id]`;
@@ -574,9 +576,22 @@ export async function sdv(argv) {
       if (!fs.existsSync(mf)) throw new Error(`no simulator mod ${id}`);
       const m = JSON.parse(fs.readFileSync(mf, 'utf8')), title = m.title || id, uid = `StardewSim.${id.replace(/[^\w]/g, '')}`;
       const dir = path.join(fl.o || 'dist', `[CP] ${title}`), A = path.join(dir, 'assets'); fs.mkdirSync(A, { recursive: true });
-      const changes = [], chairs = {}, images = new Set(), notes = [];
-      const deps = [...new Set(Object.values(m.furniture || {}).flat().map(pl => furnData().items[pl.id]?.mod).filter(Boolean))];
-      // real furniture only when the bridge AND every decor pack are installed; otherwise the baked copy (art + seats) is used
+      const changes = [], chairs = {}, images = new Set(), notes = [], fd = furnData(), modUid = m.manifest?.UniqueID || uid;
+      // test builds carry the decor packs' art + functions inside this mod (--no-bundle: depend on the packs instead)
+      const all = Object.values(m.furniture || {}).flat();
+      const bundle = fl['no-bundle'] ? null : bundleFurniture(all, { items: fd.items, skins: fd.skins, textures: index().textures, actions: fd.actions || {}, getImg, uid: modUid });
+      const deps = [...new Set(all.filter(pl => !bundle?.ids.has(bundleKey(pl))).map(pl => fd.items[pl.id]?.mod).filter(Boolean))];
+      let bakeActs;
+      if (bundle) {
+        writePNG(path.join(A, 'furniture.png'), bundle.sheet); writePNG(path.join(A, 'furnitureFront.png'), bundle.front);
+        changes.push({ Action: 'Load', Target: bundle.tex.replace(/\\/g, '/'), FromFile: 'assets/furniture.png' }, { Action: 'Load', Target: bundle.tex.replace(/\\/g, '/') + 'Front', FromFile: 'assets/furnitureFront.png' },
+          { Action: 'EditData', Target: 'Data/Furniture', Entries: bundle.data });
+        if (Object.keys(bundle.shops).length) changes.push({ Action: 'EditData', Target: 'Data/Shops', Entries: bundle.shops });
+        // baked fallback: tile actions of pack catalogues point at our own shops
+        bakeActs = Object.fromEntries(Object.entries(fd.actions || {}).map(([k, v]) => [k, v.map(a => a.replace(/^OpenShop\s+(\S+)/, (s, id) => bundle.shopIds[id] ? `OpenShop ${bundle.shopIds[id]}` : s))]));
+        notes.push('Personal test build: contains art from other mods, do not redistribute.');
+      }
+      // real furniture only when the bridge (and every non-bundled decor pack) is installed; otherwise the baked copy (art + seats) is used
       const useBridge = { Name: 'UseBridge', Value: 'true', When: Object.fromEntries(['Waifuhtr.StardewSim', ...deps].map(u => [`HasMod |contains=${u}`, true])) };
       const BRIDGE = { UseBridge: true }, BAKED = { UseBridge: false };
       // non-vanilla tilesheets get unique file names (several packs ship e.g. "Wallpaper_texture.png")
@@ -585,7 +600,7 @@ export async function sdv(argv) {
         const m2 = Object.create(map); m2.sheets = map.sheets.map(s => ({ ...s, img: s.missing ? s.img : flat(s.img) }));
         fs.writeFileSync(path.join(A, file), mapToTmx(m2)); for (const s of map.sheets) if (!/^Maps\//.test(s.img) && !s.missing) images.add(s.img); };
       for (const name of Object.keys(m.locations || {})) {
-        const lm = loadMap(name), bare = new GameMap(lm.j), baked = bakeLocation(name);
+        const lm = loadMap(name), bare = new GameMap(lm.j), baked = bakeLocation(name, undefined, bakeActs);
         writeTmx(bare, `${name}_Bare.tmx`); writeTmx(baked.map, `${name}.tmx`); writePNG(path.join(A, baked.sheetName + '.png'), baked.sheet);
         Object.assign(chairs, baked.chairTiles);
         const arr = String(lm.props.StardewSimArrival || '0 0').split(' ').map(Number);
@@ -605,7 +620,20 @@ export async function sdv(argv) {
         ContentPackFor: { UniqueID: 'Pathoschild.ContentPatcher' }, Dependencies: [...deps.map(u => ({ UniqueID: u, IsRequired: false })), { UniqueID: 'Waifuhtr.StardewSim', IsRequired: false }] }, null, 2));
       fs.writeFileSync(path.join(dir, 'content.json'), JSON.stringify({ Format: '2.0.0', DynamicTokens: [{ Name: 'UseBridge', Value: 'false' }, useBridge], Changes: changes }, null, 2));
       const ss = await sdv(['ss-export', id, '-o', fl.o || 'dist', '--name', `[SS] ${title}`]);
-      return { text: `wrote ${dir} (${changes.length} changes, ${images.size} images${deps.length ? ', requires ' + deps.join(', ') : ''})\n${ss.text}${notes.length ? '\nnote: ' + notes.join(' ') : ''}` };
+      if (bundle) { // the bridge places our bundled copies (needs only this pack) and runs their functions itself
+        const sd = path.join(fl.o || 'dist', `[SS] ${title}`), lf = path.join(sd, 'layout.json'), L = JSON.parse(fs.readFileSync(lf, 'utf8')), mfs = path.join(sd, 'manifest.json'), M = JSON.parse(fs.readFileSync(mfs, 'utf8'));
+        const acts = {};
+        for (const loc of Object.values(L.Locations)) for (const e of loc.Furniture) {
+          const nid = bundle.ids.get(bundleKey({ id: e.Id, skin: e.Skin }));
+          if (nid) { e.Id = nid; delete e.Skin; if (bundle.actions[nid]) acts[nid] = bundle.actions[nid]; }
+          else if (L.Actions[e.Id]) acts[e.Id] = L.Actions[e.Id];
+        }
+        Object.assign(L, { RequiresMods: [modUid, ...deps], Actions: acts, ForceActions: true });
+        M.Dependencies = [{ UniqueID: modUid, IsRequired: true }, ...deps.map(u => ({ UniqueID: u, IsRequired: false }))];
+        M.Description = `${M.Description}. Personal test build, do not redistribute.`;
+        fs.writeFileSync(lf, JSON.stringify(L, null, 1)); fs.writeFileSync(mfs, JSON.stringify(M, null, 2));
+      }
+      return { text: `wrote ${dir} (${changes.length} changes, ${images.size} images${bundle ? `, bundled ${bundle.count} furniture (${Object.keys(bundle.shops).length} catalogue shops, ${Object.keys(bundle.actions).length} functions)` : ''}${deps.length ? ', requires ' + deps.join(', ') : ''})\n${bundle ? ss.text.replace(/\nrequires:.*/, '') : ss.text}${bundle?.notes.length ? '\n' + bundle.notes.join('\n') : ''}${notes.length ? '\nnote: ' + notes.join(' ') : ''}` };
     }
     case 'ss-export': {
       const id = p[0], f = path.join(DATA, 'mods', id, 'mod.json');

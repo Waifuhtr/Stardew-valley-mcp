@@ -56,6 +56,13 @@ await t('bake', () => S(`bake BeachCabin -o ${tmp}/bake`), /seats/);
 await t('house go', () => S('go Town 54 100 BeachCabin 96 11'), /BeachCabin 43,11 -> 96,11: /);
 await t('state bridge (Passable T)', async () => ({ text: String(applyStates(loadMap('Beach'), ['beachBridgeFixed']).walkable(58, 13)) }), /true/);
 await t('cp-export', () => S(`cp-export beach-cabin -o ${tmp}/dist`), /\[SS\] Beach House: BeachCabin \d+ furniture/);
+await t('cp-export bundle', async () => {
+  const L = JSON.parse(fs.readFileSync(`${tmp}/dist/[SS] Beach House/layout.json`, 'utf8')), C = JSON.parse(fs.readFileSync(`${tmp}/dist/[CP] Beach House/content.json`, 'utf8'));
+  const own = Object.keys(C.Changes.find(c => c.Target === 'Data/Furniture')?.Entries || {}), ids = Object.values(L.Locations).flatMap(l => l.Furniture.map(f => f.Id));
+  const foreign = ids.filter(i => !own.includes(i) && !process.env.SDV_NO_THIRDPARTY && fs.existsSync('web/data/thirdparty/furniture.json') && JSON.parse(fs.readFileSync('web/data/thirdparty/furniture.json', 'utf8')).items[i]);
+  const shops = Object.values(L.Actions).flat().filter(a => a.startsWith('OpenShop ')).map(a => a.split(' ')[1]), shopData = C.Changes.find(c => c.Target === 'Data/Shops')?.Entries || {};
+  return { text: `foreign ${foreign.length} missingShops ${shops.filter(s => !shopData[s] && !/FurnitureCatalogue$/.test(s)).length} deps ${C.DynamicTokens[1].When ? Object.keys(C.DynamicTokens[1].When).length : 0}` };
+}, /^foreign 0 missingShops 0 deps 1$/);
 await t('place report', () => S(`render BusStop --region 0,0,30,20 --place web/data/img/extra/sprites.png@-9,10 -o ${tmp}/pr.png`), /NOTHING VISIBLE/);
 await t('place frame top', () => S(`render BusStop --region 0,0,30,20 --place web/data/img/extra/sprites.png@10,10@16,32,1@top -o ${tmp}/pt.png`), /#1 @top: .* visible 100%/);
 await t('px frames', () => P('frames web/data/img/extra/sprites.png'), /npc 16x32/);

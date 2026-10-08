@@ -133,6 +133,12 @@ boxes and seats follow the game's own rules (Furniture.updateRotation / GetSeatP
   calendar → Billboard, jukebox → Jukebox). Seats, beds, lamps, dressers, fish tanks work natively by type.
 - `sdv cp-export <mod> -o dist` → `[CP] <title>` (Content Patcher: locations, Data/Locations, EditMap, baked furniture
   + Data/ChairTiles as fallback) and `[SS] <title>` (layout for the SMAPI bridge: real Furniture objects).
+  Test builds are self-contained: every third-party / AT-skinned piece used is copied into the mod's own
+  `Mods/<UniqueID>/Furniture(+Front)` with new ids `<UniqueID>_<id>[_<skin>]` (pixel-exact, all rotations, bed blanket
+  strip), its Calcifer action re-keyed, pack catalogues → own `Data/Shops` (bundled pieces, free), vanilla catalogues/
+  calendar keep their function via an explicit action; only Cauldron/pianos etc. (id-bound) keep the vanilla id and lose
+  the skin. Players need only SMAPI + Content Patcher (+ bridge). Contains other authors' art: personal use only, never
+  commit or publish `dist/`. `--no-bundle` depends on the decor packs instead.
   `sdv ss-import exports/<loc>.json --mod save` brings a real in-game room (exported by the bridge on save) into the simulator.
 
 ## Stardew Sim Bridge (SMAPI, `smapi/StardewSim`, Android SMAPI 4.3 / game 1.6.15, .NET 9, no Harmony)

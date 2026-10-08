@@ -37,6 +37,9 @@ namespace StardewSim
         public Dictionary<string, LocationLayout> Locations { get; set; } = new();
         /// <summary>Furniture item id -> tile actions (e.g. "kitchen", "Billboard", "Jukebox").</summary>
         public Dictionary<string, List<string>> Actions { get; set; } = new();
+        /// <summary>Run these actions even when Calcifer is installed (the items are this pack's own bundled copies,
+        /// Calcifer has no data for them).</summary>
+        public bool ForceActions { get; set; }
     }
 
     public class ModConfig
@@ -52,6 +55,7 @@ namespace StardewSim
         private ModConfig Config;
         private readonly List<(string pack, LayoutFile file)> Layouts = new();
         private readonly Dictionary<string, List<string>> Actions = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> ForcedActions = new(StringComparer.OrdinalIgnoreCase);
 
         public override void Entry(IModHelper helper)
         {
@@ -73,7 +77,11 @@ namespace StardewSim
             LayoutFile defaults = helper.Data.ReadJsonFile<LayoutFile>("assets/actions.json");
             foreach (var (_, file) in this.Layouts.Prepend((null, defaults)))
                 if (file?.Actions != null)
-                    foreach (var pair in file.Actions) this.Actions[pair.Key] = pair.Value;
+                    foreach (var pair in file.Actions)
+                    {
+                        this.Actions[pair.Key] = pair.Value;
+                        if (file.ForceActions) this.ForcedActions.Add(pair.Key);
+                    }
 
             helper.Events.GameLoop.DayStarted += this.OnDayStarted;
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;
@@ -142,13 +150,13 @@ namespace StardewSim
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
             if (!this.Config.FurnitureActions || !Context.IsPlayerFree || this.Actions.Count == 0) return;
-            if (this.Helper.ModRegistry.IsLoaded("sophie.Calcifer")) return; // Calcifer handles them itself
             if (!(e.Button.IsActionButton() || e.Button == SButton.MouseLeft || e.Button == SButton.ControllerA)) return;
 
             GameLocation loc = Game1.currentLocation;
             Vector2 tile = e.Button == SButton.ControllerA ? Game1.player.GetGrabTile() : e.Cursor.GrabTile;
             Furniture f = loc?.GetFurnitureAt(tile);
             if (f == null || !this.Actions.TryGetValue(f.ItemId, out List<string> actions) || actions.Count == 0) return;
+            if (!this.ForcedActions.Contains(f.ItemId) && this.Helper.ModRegistry.IsLoaded("sophie.Calcifer")) return; // Calcifer handles pack items itself
             if (Vector2.Distance(Game1.player.Tile, tile) > 2.5f) return; // must stand next to it, like vanilla
             if (actions[0].StartsWith("OpenFashionSense") && !this.Helper.ModRegistry.IsLoaded("PeacefulEnd.FashionSense")) return;
 
