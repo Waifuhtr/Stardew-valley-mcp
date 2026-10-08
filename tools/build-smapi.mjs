@@ -8,6 +8,8 @@ import { furnData } from '../cli/commands.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const proj = path.join(ROOT, 'smapi/StardewSim'), out = path.join(ROOT, 'dist/Stardew Sim Bridge');
+// the persistent home may lose exec bits after a container restart
+try { fs.chmodSync(path.join(process.env.HOME, '.dotnet/dotnet'), 0o755); } catch {}
 const dotnet = fs.existsSync(path.join(process.env.HOME, '.dotnet/dotnet')) ? path.join(process.env.HOME, '.dotnet/dotnet') : 'dotnet';
 execSync(`"${dotnet}" build -c Release ${process.env.SDV_LIBS ? `-p:SdvLibs="${process.env.SDV_LIBS}"` : ''}`, { cwd: proj, stdio: 'inherit', env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' } });
 fs.rmSync(out, { recursive: true, force: true });
