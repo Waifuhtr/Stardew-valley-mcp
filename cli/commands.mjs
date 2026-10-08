@@ -11,7 +11,7 @@ import { bakeFurniture } from './bake.mjs';
 import { layout, seats as furnSeats, mapChairSeats, canPlace, furnitureBlocks, resolveDecor, wallTiles, skinsFor, SEAT_TYPES, WALL_TYPES } from '../web/core/furniture.mjs';
 import { asciiMap, LEGEND } from '../web/core/ascii.mjs';
 import { route, incoming, mapOf, isVariant, mapWarps } from '../web/core/world.mjs';
-import { renderMap, SEASONS } from '../web/core/render.mjs';
+import { renderMap, SEASONS, seasonImg } from '../web/core/render.mjs';
 import { tmxToJson, mapToTmx } from '../web/core/tmx.mjs';
 import { checkMap, checkFootprint, nearestWalkable, connectivityDiff } from '../web/core/check.mjs';
 import { parsePxt, toPxt, toLayeredPxt, flatten, applyOps, palette, checkSprite, SPECS, OPS_HELP, strip, snapToPalette, ramp, frameDiff, onion } from '../web/core/pixel.mjs';
@@ -99,6 +99,29 @@ export function bakeLocation(name, sheetName) {
   const m = loadMap(name), sn = sheetName || 'z_' + m.name.replace(/\W/g, '_').toLowerCase() + '_furniture';
   return { ...bakeFurniture(m, furnData().items, getImg, sn, { skins: furnData().skins, textures: index().textures }), sheetName: sn };
 }
+// how much of a --place image is actually visible: inside the region and not hidden by Front/AlwaysFront tiles
+function placeReport(m, pl, [rx, ry, rw, rh], season) {
+  const { im, left, topY } = pl, X0 = rx * 16, Y0 = ry * 16, X1 = (rx + rw) * 16, Y1 = (ry + rh) * 16;
+  const fronts = m.layerOrder.filter(id => /^(Front|AlwaysFront)/.test(id));
+  let total = 0, inside = 0, covered = 0;
+  for (let y = 0; y < im.height; y++) for (let x = 0; x < im.width; x++) {
+    if (!im.data[(y * im.width + x) * 4 + 3]) continue; total++;
+    const wx = Math.round(left) + x, wy = Math.round(topY) + y;
+    if (wx < X0 || wy < Y0 || wx >= X1 || wy >= Y1) continue; inside++;
+    if (pl.top) continue;
+    const tx = Math.floor(wx / 16), ty = Math.floor(wy / 16);
+    for (const L of fronts) {
+      const g = m.gid(L, tx, ty); if (!g) continue; const s = m.sheetOf(g); if (!s) continue;
+      const t = getImg(seasonImg(s.sheet.img, season, index().textures)) || getImg(s.sheet.img); if (!t) continue;
+      const cols = Math.floor(t.width / 16), sx = (s.idx % cols) * 16 + (wx - tx * 16), sy = Math.floor(s.idx / cols) * 16 + (wy - ty * 16);
+      if (t.data[(sy * t.width + sx) * 4 + 3] > 128) { covered++; break; }
+    }
+  }
+  const pct = (a) => total ? Math.round(a * 100 / total) + '%' : '0%';
+  const rect = `px ${Math.round(left)},${Math.round(topY)} ${im.width}x${im.height} (tiles ${(left / 16).toFixed(2)},${(topY / 16).toFixed(2)}..${((left + im.width) / 16).toFixed(2)},${((topY + im.height) / 16).toFixed(2)})`;
+  const warn = !total ? 'W image is fully transparent' : !inside ? 'W NOTHING VISIBLE: the image lies outside the rendered region' : inside < total * 0.25 ? 'W mostly outside the region' : covered > inside * 0.5 ? 'W mostly hidden behind Front layers (add @top to draw above)' : '';
+  return `place ${pl.spec}${pl.top ? ' @top' : ''}: ${rect}; visible ${pct(inside - covered)} (in region ${pct(inside)}, behind Front ${pct(covered)})${warn ? '\n' + warn : ''}`;
+}
 const fname = (f) => f.tr ? `${f.tr} / ${f.n}` : f.n;
 const fline = (f) => `${f.id} ${fname(f)} | ${f.t} ${f.s.join('x')} box ${f.b.join('x')} r${f.r} ${f.p}g${f.mod ? ' [' + f.mod + ']' : f.tex !== 'TileSheets/furniture' ? ' ' + f.tex.split('/').pop() : ''}${furnData().actions?.[f.id] ? ' act:' + furnData().actions[f.id].join(',') : ''}${skinsFor(f, furnData().skins).length ? ' skins:' + skinsFor(f, furnData().skins).length : ''}`;
 function findFurn(q) {
@@ -167,7 +190,7 @@ path <map> x1 y1 x2 y2 [--ascii]   A* walk (moves like "R5 D3")
 go <map> x y <target> [tx ty]      multi-map walk through doors/warps
 route <from> <to>                  location hops
 find <text>                        search warps/actions/props in all maps
-render <map|file.tmx> [-o f.png] [--region x,y,w,h] [--scale n] [--season s] [--actor x,y[,dir]] [--sprite f.png] [--place img.png@x,y;...] [--grid] [--pass] [--path x1,y1,x2,y2]
+render <map|file.tmx> [-o f.png] [--region x,y,w,h] [--scale n] [--season s] [--actor x,y[,dir]] [--sprite f.png] [--place img.png@x,y[@fw,fh,i][@top];...] [--grid] [--pass] [--path x1,y1,x2,y2]
 sheet <img> [--idx i] [-o f.png --grid]   tilesheet info / index grid image
 tmx <map> -o f.tmx                 export vanilla map to Tiled TMX (mod template)
 check <file.tmx|map> [--locs A,B]  validate a custom map (layers, sheets, warps, connectivity)
@@ -283,17 +306,29 @@ export async function sdv(argv) {
       if (!region && m.w * m.h > 90 * 90 && !fl.full) return { text: `map is ${m.w}x${m.h}; pass --region x,y,w,h (or --full). Tip: ascii first to find the area.` };
       const actors = [];
       if (fl.actor) { const [ax, ay, dir] = String(fl.actor).split(','); actors.push({ img: readPNG(fl.sprite || path.join(DATA, 'img/extra/sprites.png')), x: +ax, y: +ay, dir: dir || 'down' }); }
-      if (fl.place) for (const spec of String(fl.place).split(';')) { // file.png@x,y : bottom-left of image on tile x,y
-        const [f, xy] = spec.split('@'), [px, py] = nums(xy), im = loadImgFile(f);
-        actors.push({ img: im, x: px + (im.width / 16 - 1) / 2, y: py, fw: im.width, fh: im.height });
+      // --place "file.png@x,y[@fw,fh,i][@top]" (';' separated). Bottom-left of the image sits on the bottom-left of tile x,y
+      // (fractional tiles allowed); @fw,fh,i picks one frame of a sprite sheet; @top draws above all map layers.
+      const placed = [], overlays = [];
+      if (fl.place) for (const spec of String(fl.place).split(';').map(x => x.trim()).filter(Boolean)) {
+        const parts = spec.split('@'), f = parts[0], [px, py] = nums(parts[1] || ''), top = parts.includes('top');
+        if (!f || isNaN(px) || isNaN(py)) throw new Error(`bad --place "${spec}" (expected file.png@x,y[@fw,fh,i][@top])`);
+        let im = loadImgFile(f);
+        const fr = parts.slice(2).find(q => /^\d+,\d+,\d+$/.test(q));
+        if (fr) { const [fw, fh, i] = nums(fr), cols = Math.max(1, Math.floor(im.width / fw)), c = newImg(fw, fh);
+          if ((i + 1) > cols * Math.floor(im.height / fh)) throw new Error(`frame ${i} outside ${f} (${cols}x${Math.floor(im.height / fh)} frames of ${fw}x${fh})`);
+          blit(c, im, (i % cols) * fw, Math.floor(i / cols) * fh, fw, fh, 0, 0); im = c; }
+        const left = px * 16, topY = (py + 1) * 16 - im.height;
+        if (top) overlays.push({ img: im, x: left, y: topY }); else actors.push({ img: im, x: px + (im.width / 16 - 1) / 2, y: py, fw: im.width, fh: im.height });
+        placed.push({ spec: f.split('/').pop() + (fr ? '#' + fr.split(',')[2] : ''), im, left, topY, top });
       }
       let marks = [];
       if (fl.path) { const [a, b, c, d] = nums(fl.path); const pt = findPath(m, a, b, c, d); if (pt) marks = pt.map(([x, y]) => [x, y, [255, 230, 0, 150]]); }
       const season = SEASONS.includes(fl.season) ? fl.season : 'spring';
-      const img = renderMap(m, { getImg, textures: ix.textures, season, region, scale: +fl.scale || 1, actors, grid: !!fl.grid, overlay: fl.pass ? 'pass' : null, marks, furniture: m.furniture, catalog: furnData().items, skins: furnData().skins });
+      const img = renderMap(m, { getImg, textures: ix.textures, season, region, scale: +fl.scale || 1, actors, overlays, grid: !!fl.grid, overlay: fl.pass ? 'pass' : null, marks, furniture: m.furniture, catalog: furnData().items, skins: furnData().skins });
       const o = fl.o || path.join(process.env.TMPDIR || '/tmp', `sdv-${m.name.replace(/\W/g, '_')}.png`);
       const png = encodePNG(img); fs.writeFileSync(o, png);
-      return { text: `wrote ${o} ${img.width}x${img.height}`, image: { path: o, png } };
+      const report = placed.map(pl => placeReport(m, pl, region || [0, 0, m.w, m.h], season));
+      return { text: [`wrote ${o} ${img.width}x${img.height}`, ...report].join('\n'), image: { path: o, png } };
     }
     case 'sheet': {
       const key = Object.keys(ix.textures).find(k => k === p[0] || k.split('/').pop() === p[0]);
@@ -596,6 +631,7 @@ snap <in.png> --pal PAL -o out.png            force colors onto a palette (PAL =
 ramp <#hex> [n]                               hue-shifted shade ramp dark->light
 diff <a.png> [b.png] [--frame fw,fh,i,j]      changed pixels between frames/images, grouped by color
 onion <sheet.png> --frame fw,fh,i -o out.png  frame i over faint i-1 (red) / i+1 (blue)
+frames <img.png>                              guess frame size of a sprite sheet from transparent gaps
 preview <img.png> -o out.png [--scale n] [--grid] [--frames fw,fh,i,j,...]
 spec [kind] | check <img.png> --as <kind> | slice <img.png> fw fh -o dir | pack -o out.png --cols n f1.png ...
 Ingame look: sdv render <map> --region ... --place item.png@x,y`;
@@ -662,6 +698,20 @@ export async function px(argv, stdinText) {
       if (!ch.length) return { text: 'identical' };
       const by = {}; for (const [x, y, c] of ch) (by[c] ||= []).push(`${x},${y}`);
       return { text: `${ch.length} px differ (coords relative to frame):\n` + Object.entries(by).map(([c, xs]) => `${c}: ${xs.join(' ')}`).join('\n') };
+    }
+    case 'frames': { // guess sprite-sheet frame size from fully transparent gaps (rows and columns)
+      const im = loadImgFile(p[0]);
+      const axis = (len, other, at) => { const used = []; for (let a = 0; a < len; a++) { let u = 0; for (let b = 0; b < other && !u; b++) if (at(a, b)) u = 1; used.push(u); }
+        const runs = []; let s0 = null; used.forEach((u, a) => { if (u && s0 === null) s0 = a; if (!u && s0 !== null) { runs.push([s0, a - 1]); s0 = null; } }); if (s0 !== null) runs.push([s0, len - 1]);
+        const sizes = []; for (let n = 1; n <= Math.min(64, len); n++) { if (len % n) continue; const w = len / n; if (runs.every(([x0, x1]) => Math.floor(x0 / w) === Math.floor(x1 / w))) sizes.push(w); }
+        return { runs: runs.length, sizes }; };
+      const A = (x, y) => im.data[(y * im.width + x) * 4 + 3] > 0;
+      const cx = axis(im.width, im.height, (x, y) => A(x, y)), cy = axis(im.height, im.width, (y, x) => A(x, y));
+      const pick = (c) => c.sizes.filter(w => w >= 8).sort((a, b) => a - b)[0] ?? c.sizes[c.sizes.length - 1];
+      const fw = pick(cx), fh = pick(cy);
+      const conv = Object.entries(SPECS).filter(([, v]) => im.width % v.frame[0] === 0 && im.height % v.frame[1] === 0 && (v.cols ? im.width === v.frame[0] * v.cols : true) && v.frame[0] * v.frame[1] > 16 * 16)
+        .map(([k, v]) => `${k} ${v.frame.join('x')}`).slice(0, 4);
+      return { text: `${im.width}x${im.height}: ${cx.runs} column groups, ${cy.runs} row groups${conv.length ? `\nStardew conventions that fit: ${conv.join(', ')} (frames touching each other can't be split by gaps)` : ''}\nlikely frame ${fw}x${fh} -> ${im.width / fw}x${im.height / fh} = ${(im.width / fw) * (im.height / fh)} frames (other widths: ${cx.sizes.filter(w => w !== fw).slice(-4).join(',') || '-'})\nuse: --frame ${fw},${fh},i  |  sdv render --place file.png@x,y@${fw},${fh},i` };
     }
     case 'onion': {
       const [fw, fh, i] = nums(fl.frame || '16,32,0');

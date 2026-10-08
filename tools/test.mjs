@@ -55,6 +55,9 @@ await t('bake', () => S(`bake BeachCabin -o ${tmp}/bake`), /seats/);
 await t('state bridge', () => S('go Town 54 100 BeachBakery'), /arrive BeachBakery/);
 await t('passable T', () => S('tile Beach 58 13'), /walkable=true/);
 await t('cp-export', () => S(`cp-export beach-cafe -o ${tmp}/dist`), /\[SS\] Beach Bakery: BeachBakery \d+ furniture/);
+await t('place report', () => S(`render BusStop --region 0,0,30,20 --place web/data/img/extra/sprites.png@-9,10 -o ${tmp}/pr.png`), /NOTHING VISIBLE/);
+await t('place frame top', () => S(`render BusStop --region 0,0,30,20 --place web/data/img/extra/sprites.png@10,10@16,32,1@top -o ${tmp}/pt.png`), /#1 @top: .* visible 100%/);
+await t('px frames', () => P('frames web/data/img/extra/sprites.png'), /npc 16x32/);
 await t('px spec', () => P('spec npc'), /16x32/);
 
 // MCP handshake

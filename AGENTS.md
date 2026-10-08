@@ -69,7 +69,10 @@ Cheap workflow for a sprite:
 4. Animation: draw frame 0, then `px ops sheet.png -o sheet.png "copyframe 16 32 0 1; frame 16 32 1; move 4 20 3 6 4 19"`
    and verify with `px diff sheet.png --frame 16,32,0,1` (changed pixels grouped by color, no image needed)
    or `px onion sheet.png --frame 16,32,1 -o o.png` (frame over faint neighbours).
-5. In-game look: `sdv render Town --region 40,55,10,8 --place item.png@45,60`.
+5. In-game look: `sdv render Town --region 40,55,10,8 --place item.png@45,60`. Spec `file.png@x,y[@fw,fh,i][@top]`
+   (bottom-left of the image on tile x,y, fractional ok; `@fw,fh,i` = one frame of a sheet; `@top` = above Front
+   layers, for effects). Every place prints its pixel rect + % visible / % hidden behind Front and warns when nothing
+   shows. Unknown frame size → `px frames sheet.png` (from transparent gaps + Stardew conventions).
 
 Other: `px read sheet.png --frame 16,32,0` (PNG → PXT), `px layers f.pxt [-o dir]`, `px draw f.pxt --layer hat` /
 `--hide hat`, `px snap in.png --pal TileSheets/weapons`, `px new npc -o f.png`, `px check f.png --as npc`,

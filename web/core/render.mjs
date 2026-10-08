@@ -71,6 +71,8 @@ export function renderMap(map, opts) {
     drawLayer(id);
   }
   if (!actorsDone) drawActors();
+  // images drawn above every map layer (opts.overlays = [{img, x, y}] in map pixels)
+  for (const o of opts.overlays || []) blit(out, o.img, 0, 0, o.img.width, o.img.height, Math.round(o.x * S - rx * T), Math.round(o.y * S - ry * T), S);
   if (opts.overlay === 'pass') {
     const col = { 0: [0, 0, 0, 140], 2: [255, 40, 40, 90], 3: [40, 120, 255, 90], 4: [255, 220, 0, 110] };
     for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) {
